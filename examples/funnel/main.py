@@ -62,13 +62,11 @@ if __name__ == "__main__":
     metric_fn = M.fisher_metric_fn
     step_size = 1e-1
     inverse_mass_matrix = jnp.ones(M.D)
-    num_integration_steps = 8
     alpha2 = 1.0
-    sampler = geomjax.lmcmonge(
+    sampler = geomjax.nutslmcmonge(
         logdensity_fn,
         step_size,
         inverse_mass_matrix,
-        num_integration_steps,
         alpha2=alpha2,
     )
 
