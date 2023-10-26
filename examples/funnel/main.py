@@ -57,31 +57,24 @@ class neal_funnel:
 if __name__ == "__main__":
     # Build the kernel
     # LMC Monge
+    rng_key = jax.random.PRNGKey(0)
     M = neal_funnel()
     logdensity_fn = M.logp
     metric_fn = M.fisher_metric_fn
     step_size = 1e-1
     inverse_mass_matrix = jnp.ones(M.D)
+    num_integration_steps = 8
     alpha2 = 1.0
-    sampler = geomjax.nutslmcmonge(
+    sampler = geomjax.lmcmonge(
         logdensity_fn,
         step_size,
         inverse_mass_matrix,
+        num_integration_steps,
         alpha2=alpha2,
     )
 
     # Initialize the state
     initial_position = jnp.ones(M.D)
-    state = sampler.init(initial_position)
-
-    # Iterate
-    rng_key = jax.random.PRNGKey(0)
-    step = jax.jit(sampler.step)
-    # 1 step
-    state, info = step(rng_key, state)
-    print("State", state)
-    print("Info", info)
-    print("------------------------------\n")
     # Sample 1 chain
     states = inference_loop(
         rng_key,
@@ -93,21 +86,9 @@ if __name__ == "__main__":
     # plt.grid()
     # plt.show()
 
+    ##############
     # LMC Fisher
-    sampler = geomjax.nutslmc(logdensity_fn, step_size, metric_fn)
-
-    # Initialize the state
-    initial_position = jnp.ones(M.D)
-    state = sampler.init(initial_position)
-    print("Ini state", state)
-
-    # Iterate
-    rng_key = jax.random.PRNGKey(42)
-    step = jax.jit(sampler.step)
-    # 1 step
-    state, info = step(rng_key, state)
-    print("State", state)
-    print("Info", info)
+    sampler = geomjax.lmc(logdensity_fn, step_size, metric_fn, num_integration_steps)
     # Sample 1 chain
     states = inference_loop(
         rng_key,
