@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 # Import version information from _version.py
-from your_package_name._version import __version__
+from geomjax._version import __version__
 
 # Read the long description from a README file
 with open("README.md", "r") as f:

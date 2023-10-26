@@ -58,8 +58,8 @@ if __name__ == "__main__":
     # Build the kernel
     # LMC Monge
     M = neal_funnel()
-    logdensity_fn = lambda x: M.logp(x)
-    metric_fn = lambda x: M.fisher_metric_fn(x)
+    logdensity_fn = M.logp
+    metric_fn = M.fisher_metric_fn
     step_size = 1e-1
     inverse_mass_matrix = jnp.ones(M.D)
     num_integration_steps = 8
