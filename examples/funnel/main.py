@@ -27,9 +27,6 @@ class neal_funnel:
         self.sigma = sigma
         self.mean = mean
         self.D = D
-        self.name = "NealFunnel"
-        self.xlim = [-10.0, 10.0]
-        self.ylim = [-10.0, 10.0]
 
     def logp(self, theta):
         return jss.norm.logpdf(theta[self.D - 1], loc=0.0, scale=self.sigma) + jnp.sum(
