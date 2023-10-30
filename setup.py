@@ -10,14 +10,11 @@ with open("README.md", "r") as f:
 setup(
     name="geomjax",
     version=__version__,
-    author="Blackjax Authors, Williams",
-    description="Geometric MCMC Samplers",
+    author="Blackjax Authors, Williams B., Yu H.",
+    description="Geometric MCMC Samplers in Jax",
     url="https://github.com/williwilliams3/geomjax",
     packages=find_packages(),
-    install_requires=[
-        "numpy",
-        "blackjax-nightly",
-    ],
+    install_requires=["numpy", "blackjax", "jax", "matplotlib"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache License",
