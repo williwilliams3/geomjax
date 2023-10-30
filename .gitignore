@@ -39,3 +39,4 @@ venv_geom/
 # Repository specific
 tests/
 data/
+plot/
