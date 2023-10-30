@@ -1,5 +1,3 @@
-from geomjax._version import __version__
-
 from .adaptation.meads_adaptation import meads_adaptation
 from .adaptation.window_adaptation import window_adaptation
 from .diagnostics import effective_sample_size as ess

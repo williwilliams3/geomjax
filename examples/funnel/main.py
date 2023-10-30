@@ -1,11 +1,3 @@
-import sys
-import os
-
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), os.pardir)
-)
-sys.path.append(PROJECT_ROOT)
-
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss

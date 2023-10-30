@@ -1,5 +1,5 @@
 # requirement.py
 
-numpy>=1.20.3
-blackjax>= 1.0.0
+numpy
+blackjax>=1.0.0
 matplotlib>=3.5.0
