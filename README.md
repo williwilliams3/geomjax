@@ -7,8 +7,6 @@
 
 Install requirements by `pip install -r requirements.txt`.
 
-Install as editable by `pip install -e .`
-
 For an example of usage refer to **examples/funnel**.
 
 
