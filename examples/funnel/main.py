@@ -2,22 +2,26 @@ import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss
 import geomjax
+import pandas as pd
 
-# import matplotlib.pyplot as plt
 
-
-def inference_loop(rng_key, sampler, initial_position, num_samples):
-    initial_state = sampler.init(initial_position)
-
+def inference_loop_multiple_chains(
+    rng_key, sampler, initial_position, num_samples, num_chains
+):
+    # Assume all chains start at same possition
     kernel = sampler.step
+    initial_positions = jnp.tile(initial_position, (num_chains, 1))
+    initial_states = jax.vmap(sampler.init, in_axes=(0))(initial_positions)
+    keys = jax.random.split(rng_key, num_chains)
 
     @jax.jit
-    def one_step(state, rng_key):
-        state, _ = kernel(rng_key, state)
-        return state, state
+    def one_step(states, rng_key):
+        keys = jax.random.split(rng_key, num_chains)
+        states, _ = jax.vmap(kernel)(keys, states)
+        return states, states
 
     keys = jax.random.split(rng_key, num_samples)
-    _, states = jax.lax.scan(one_step, initial_state, keys)
+    _, states = jax.lax.scan(one_step, initial_states, keys)
 
     return states
 
@@ -51,6 +55,18 @@ class neal_funnel:
         return 0.5 * (metric + metric.T)
 
 
+def transform_states_vmap(arr):
+    # Works for vmap
+    n_samples, n_chains, n_params = arr.shape
+    arr_reshaped = arr.reshape(-1, n_params)
+    df = pd.DataFrame(
+        arr_reshaped, columns=["theta." + str(k) for k in range(n_params)], dtype=float
+    )
+    df["chain"] = jnp.tile(jnp.arange(n_chains), n_samples)
+    df["draw"] = jnp.repeat(jnp.arange(n_samples), n_chains)
+    return df
+
+
 if __name__ == "__main__":
     # Build the kernel
     # LMC Monge
@@ -61,38 +77,17 @@ if __name__ == "__main__":
     step_size = 1e-1
     inverse_mass_matrix = jnp.ones(M.D)
     num_integration_steps = 8
-    alpha2 = 1.0
-    sampler = geomjax.lmcmonge(
-        logdensity_fn,
-        step_size,
-        inverse_mass_matrix,
-        num_integration_steps,
-        alpha2=alpha2,
-    )
-
-    # Initialize the state
-    initial_position = jnp.ones(M.D)
-    # Sample 1 chain
-    states = inference_loop(
-        rng_key,
-        sampler,
-        initial_position,
-        num_samples=1000,
-    )
-    # plt.scatter(states.position[:, 0], states.position[:, 1])
-    # plt.grid()
-    # plt.show()
-
+    num_samples = 1000
+    num_chains = 8
+    initial_position = jnp.ones(2)
     ##############
     # LMC Fisher
     sampler = geomjax.lmc(logdensity_fn, step_size, metric_fn, num_integration_steps)
     # Sample 1 chain
-    states = inference_loop(
-        rng_key,
-        sampler,
-        initial_position,
-        num_samples=1000,
+    states = inference_loop_multiple_chains(
+        rng_key, sampler, initial_position, num_samples, num_chains
     )
-    # plt.scatter(states.position[:, 0], states.position[:, 1])
-    # plt.grid()
-    # plt.show()
+    rhat = geomjax.rhat(states.position, chain_axis=1, sample_axis=0)
+    ess = geomjax.ess(states.position, chain_axis=1, sample_axis=0)
+
+    print(f"ESS {ess} and Rhat {rhat}")
