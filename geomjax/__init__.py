@@ -2,6 +2,7 @@ from .adaptation.meads_adaptation import meads_adaptation
 from .adaptation.window_adaptation import window_adaptation
 from .diagnostics import effective_sample_size as ess
 from .diagnostics import potential_scale_reduction as rhat
+from .mcmc.ghmc import ghmc
 from .mcmc.hmc import hmc
 from .mcmc.nuts import nuts
 from .rmcmc.lmc import lmc
@@ -14,6 +15,7 @@ from .optimizers import dual_averaging
 __all__ = [
     "__version__",
     "dual_averaging",  # optimizers
+    "ghmc",
     "hmc",  # mcmc
     "nuts",
     "lmc",  # mcmc
