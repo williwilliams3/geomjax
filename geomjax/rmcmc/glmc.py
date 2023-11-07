@@ -57,8 +57,8 @@ def init(
 ) -> GLMCState:
     logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
 
-    key_mometum, key_slice = jax.random.split(rng_key)
-    velocity = generate_gaussian_noise(key_mometum, position)
+    key_velocity, key_slice = jax.random.split(rng_key)
+    velocity = generate_gaussian_noise(key_velocity, position)
     slice = jax.random.uniform(key_slice, minval=-1.0, maxval=1.0)
 
     return GLMCState(position, velocity, logdensity, logdensity_grad, slice)
