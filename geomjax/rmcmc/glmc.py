@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 import geomjax.rmcmc.lmc as lmc
-import geomjax.mcmc.integrators as integrators
+import geomjax.rmcmc.integrators as integrators
 import geomjax.rmcmc.metrics as metrics
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
@@ -105,7 +105,7 @@ def build_kernel(
         state: GLMCState,
         logdensity_fn: Callable,
         step_size: float,
-        velocity_inverse_scale: ArrayLikeTree,
+        metric_fn: Callable,
         alpha: float,
         delta: float,
     ) -> tuple[GLMCState, lmc.LMCInfo]:
@@ -121,10 +121,6 @@ def build_kernel(
             (Unnormalized) Log density function being targeted.
         step_size
             Variable specifying the size of the integration step.
-        velocity_inverse_scale
-            Pytree with the same structure as the targeted position variable
-            specifying the per dimension inverse scaling transformation applied
-            to the persistent velocity variable prior to the integration step.
         alpha
             Variable specifying the degree of persistent velocity, complementary
             to independent new velocity.
@@ -134,11 +130,17 @@ def build_kernel(
 
         """
 
-        flat_inverse_scale = jax.flatten_util.ravel_pytree(velocity_inverse_scale)[0]
-        _, kinetic_energy_fn, _ = metrics.gaussian_euclidean(flat_inverse_scale**2)
+        (
+            velocity_generator,
+            kinetic_energy_fn,
+            _,
+            omega_tilde_fn,
+            grad_logdetmetric,
+            metric_vector_product,
+        ) = metrics.gaussian_riemannian(metric_fn)
 
-        symplectic_integrator = integrators.velocity_verlet(
-            logdensity_fn, kinetic_energy_fn
+        symplectic_integrator = integrators.lan_integrator(
+            logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
         )
         proposal_generator = lmc.lmc_proposal(
             symplectic_integrator,
@@ -187,7 +189,9 @@ def update_velocity(rng_key, state, alpha):
     position, velocity, *_ = state
 
     m_size = pytree_size(velocity)
-    velocity_generator, *_ = metrics.gaussian_euclidean(1 / alpha * jnp.ones((m_size,)))
+    velocity_generator, *_ = metrics.gaussian_riemannian(
+        1 / alpha * jnp.ones((m_size,))
+    )
     velocity = jax.tree_map(
         lambda prev_velocity, shifted_velocity: prev_velocity * jnp.sqrt(1.0 - alpha)
         + shifted_velocity,
