@@ -60,8 +60,11 @@ def init(
     key_velocity, key_slice = jax.random.split(rng_key)
     velocity = generate_gaussian_noise(key_velocity, position)
     slice = jax.random.uniform(key_slice, minval=-1.0, maxval=1.0)
+    volume_adjustment = 0.0
 
-    return GLMCState(position, velocity, logdensity, logdensity_grad, slice)
+    return GLMCState(
+        position, velocity, logdensity, logdensity_grad, slice, volume_adjustment
+    )
 
 
 def build_kernel(
