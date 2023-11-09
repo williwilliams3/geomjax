@@ -168,7 +168,12 @@ def gaussian_riemannian(
         return grad_logdet_metric
 
     def metric_vector_product(position: ArrayLikeTree, velocity: ArrayLikeTree):
-        return jnp.dot(metric_fn(position), velocity)
+        metric = metric_fn(position)
+        ndim = jnp.ndim(metric)
+        if ndim == 1:  # diagonal mass matrix
+            return jnp.multiply(metric, velocity)
+        else:
+            return jnp.dot(metric_fn(position), velocity)
 
     return (
         velocity_generator,

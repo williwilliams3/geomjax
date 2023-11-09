@@ -18,6 +18,7 @@ import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 from geomjax.types import ArrayTree, ArrayLikeTree
+from jax.scipy.linalg import lu_factor, lu_solve
 
 __all__ = ["lan_integrator"]
 
@@ -79,6 +80,38 @@ def lan_integrator(
         # 2nd volume adustment
         Omega_tilde_term = omega_tilde_fn(position, v_update, -step_size)
         volume_adjustment += jnp.linalg.slogdet(Omega_tilde_term)[1]
+
+        return unravel_fn(v_update), volume_adjustment
+
+    def half_step_fn_v2(
+        position: ArrayLikeTree,
+        velocity: ArrayLikeTree,
+        volume_adjustment: float,
+        logdensity_grad: ArrayLikeTree,
+        step_size: float,
+    ) -> tuple[ArrayTree, float]:
+        velocity, unravel_fn = ravel_pytree(velocity)
+        position, _ = ravel_pytree(position)
+        logdensity_grad, _ = ravel_pytree(logdensity_grad)
+
+        # 1st volume adjustment
+        Omega_tilde_term = omega_tilde_fn(position, velocity, step_size)
+        lu, piv = lu_factor(Omega_tilde_term)
+        logdet_Omega_tilde = jnp.sum(jnp.log(jnp.abs(jnp.diag(lu))))
+
+        volume_adjustment -= logdet_Omega_tilde
+
+        # Half velocity update
+        dphi = -logdensity_grad + 0.5 * grad_logdetmetric(position)
+        v_temp = metric_vector_product(position, velocity) - 0.5 * step_size * dphi
+        v_update = lu_solve((lu, piv), v_temp)
+
+        # 2nd volume adjustment
+        Omega_tilde_term = omega_tilde_fn(position, v_update, -step_size)
+        lu, piv = lu_factor(Omega_tilde_term)
+        logdet_Omega_tilde = jnp.sum(jnp.log(jnp.abs(jnp.diag(lu))))
+
+        volume_adjustment += logdet_Omega_tilde
 
         return unravel_fn(v_update), volume_adjustment
 

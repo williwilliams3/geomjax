@@ -20,10 +20,12 @@ import jax.numpy as jnp
 import geomjax.rmcmc.lmc as lmc
 import geomjax.rmcmc.integrators as integrators
 import geomjax.rmcmc.metrics as metrics
+import geomjax.mcmc.metrics as metrics_hmc
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
-from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
-from geomjax.util import generate_gaussian_noise, pytree_size
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
+from geomjax.util import generate_gaussian_noise, pytree_size, linear_map
+
 
 __all__ = ["GLMCState", "init", "build_kernel", "glmc"]
 
@@ -131,7 +133,7 @@ def build_kernel(
         """
 
         (
-            velocity_generator,
+            _,
             kinetic_energy_fn,
             _,
             omega_tilde_fn,
@@ -154,7 +156,11 @@ def build_kernel(
         position, velocity, logdensity, logdensity_grad, slice = state
         # New velocity is persistent
         velocity = update_velocity(key_velocity, state, alpha)
-        velocity = jax.tree_map(lambda m, s: m / s, velocity, velocity_inverse_scale)
+        L, L_inv = metric_square_root(position, metric_fn=metric_fn)
+        velocity = matrix_vector_multiplication(
+            L_inv, velocity
+        )  # Transform from N(0,I) to N(0, G^{-1}(theta))
+
         # Slice is non-reversible
         slice = ((slice + 1.0 + delta + noise_fn(key_noise)) % 2) - 1.0
 
@@ -163,9 +169,15 @@ def build_kernel(
         )
         proposal, info = proposal_generator(slice, integrator_state)
         proposal = lmc.flip_velocity(proposal)
+        if jax.tree_multimap(
+            lambda x, y: not jnp.all(x == y), position, proposal.position
+        ):
+            L, L_inv = metric_square_root(proposal.position, metric_fn=metric_fn)
         state = GLMCState(
             proposal.position,
-            jax.tree_map(lambda m, s: m * s, proposal.velocity, velocity_inverse_scale),
+            matrix_vector_multiplication(
+                L, velocity
+            ),  # Transform from N(0, G^{-1}(theta)) to N(0,1)
             proposal.logdensity,
             proposal.logdensity_grad,
             info.acceptance_rate,
@@ -189,9 +201,7 @@ def update_velocity(rng_key, state, alpha):
     position, velocity, *_ = state
 
     m_size = pytree_size(velocity)
-    velocity_generator, *_ = metrics.gaussian_riemannian(
-        1 / alpha * jnp.ones((m_size,))
-    )
+    velocity_generator, *_ = metrics_hmc(1 / alpha * jnp.ones((m_size,)))
     velocity = jax.tree_map(
         lambda prev_velocity, shifted_velocity: prev_velocity * jnp.sqrt(1.0 - alpha)
         + shifted_velocity,
@@ -200,6 +210,35 @@ def update_velocity(rng_key, state, alpha):
     )
 
     return velocity
+
+
+def metric_square_root(
+    position: ArrayLikeTree, metric_fn: Callable[[ArrayLikeTree], Array]
+) -> tuple[Array, Array]:
+    position, _ = jax.flatten_util.ravel_pytree(position)
+    metric = metric_fn(position)
+    ndim = jnp.ndim(metric)  # type: ignore[arg-type]
+    shape = jnp.shape(metric)[:1]  # type: ignore[arg-type]
+    metric = 0.5 * (metric + metric.T)
+    if ndim == 1:  # diagonal mass matrix
+        metric_sqrt = jnp.sqrt(metric)
+        metric_inv_sqrt = jnp.reciprocal(metric)
+    elif ndim == 2:
+        # inverse mass matrix can be factored into L*L.T. We want the cholesky
+        # factor (inverse of L.T) of the mass matrix.
+        metric_sqrt = jax.scipy.linalg.cholesky(metric, lower=True)
+        identity = jnp.identity(shape[0])
+        metric_inv_sqrt = jax.scipy.linalg.solve_triangular(
+            metric_sqrt, identity, lower=True, trans=True
+        )
+    return metric_sqrt, metric_inv_sqrt
+
+
+def matrix_vector_multiplication(
+    metric_sqrt: Array, velocity: ArrayLikeTree
+) -> ArrayLikeTree:
+    v, unravel_fn = jax.flatten_util.ravel_pytree(velocity)
+    return unravel_fn(linear_map(metric_sqrt, v))
 
 
 class glmc:
