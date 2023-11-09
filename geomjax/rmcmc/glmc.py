@@ -133,7 +133,7 @@ def build_kernel(
         """
 
         (
-            _,
+            velocity_generator,
             kinetic_energy_fn,
             _,
             omega_tilde_fn,
@@ -153,15 +153,22 @@ def build_kernel(
         )
 
         key_velocity, key_noise = jax.random.split(rng_key)
-        position, velocity, logdensity, logdensity_grad, slice = state
+        (
+            position,
+            velocity,
+            logdensity,
+            logdensity_grad,
+            slice,
+            volume_adjustment,
+        ) = state
         # New velocity is persistent
-        velocity = update_velocity(key_velocity, state, alpha)
+        velocity = update_velocity(key_velocity, state, alpha, velocity_generator)
 
         # Slice is non-reversible
         slice = ((slice + 1.0 + delta + noise_fn(key_noise)) % 2) - 1.0
 
         integrator_state = integrators.IntegratorState(
-            position, velocity, logdensity, logdensity_grad
+            position, velocity, logdensity, logdensity_grad, volume_adjustment
         )
         proposal, info = proposal_generator(slice, integrator_state)
         proposal = lmc.flip_velocity(proposal)
@@ -171,6 +178,7 @@ def build_kernel(
             proposal.logdensity,
             proposal.logdensity_grad,
             info.acceptance_rate,
+            proposal.volume_adjustment,
         )
 
         return state, info
@@ -178,7 +186,7 @@ def build_kernel(
     return kernel
 
 
-def update_velocity(rng_key, state, alpha, metric_fn: Callable):
+def update_velocity(rng_key, state, alpha, velocity_generator: Callable):
     """Persistent update of the velocity variable.
 
     Performs a persistent update of the velocity, taking as input the previous
@@ -190,7 +198,6 @@ def update_velocity(rng_key, state, alpha, metric_fn: Callable):
     """
     position, velocity, *_ = state
 
-    velocity_generator, *_ = metrics.gaussian_riemannian(metric_fn=metric_fn)
     velocity = jax.tree_map(
         lambda prev_velocity, shifted_velocity: prev_velocity * jnp.sqrt(1.0 - alpha)
         + jnp.sqrt(alpha) * shifted_velocity,
@@ -270,7 +277,7 @@ class glmc:
         cls,
         logdensity_fn: Callable,
         step_size: float,
-        velocity_inverse_scale: ArrayLikeTree,
+        metric_fn: Callable,
         alpha: float,
         delta: float,
         *,
@@ -288,7 +295,7 @@ class glmc:
                 state,
                 logdensity_fn,
                 step_size,
-                velocity_inverse_scale,
+                metric_fn,
                 alpha,
                 delta,
             )

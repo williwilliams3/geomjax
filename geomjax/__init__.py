@@ -6,7 +6,7 @@ from .mcmc.ghmc import ghmc
 from .mcmc.hmc import hmc
 from .mcmc.nuts import nuts
 from .rmcmc.lmc import lmc
-from .rmcmc.lmc import glmc
+from .rmcmc.glmc import glmc
 from .rmcmc.nuts import nuts as nutslmc
 from .lmcmonge.lmc import lmc as lmcmonge
 from .lmcmonge.nuts import nutslmc as nutslmcmonge
