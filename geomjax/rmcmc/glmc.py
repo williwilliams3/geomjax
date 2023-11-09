@@ -11,28 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Public API for the Generalized (Non-reversible w/ persistent momentum) HMC Kernel"""
+"""Public API for the Generalized (Non-reversible w/ persistent velocity) LMC Kernel"""
 from typing import Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
 
-import geomjax.mcmc.hmc as hmc
-import geomjax.mcmc.integrators as integrators
-import geomjax.mcmc.metrics as metrics
+import geomjax.rmcmc.lmc as lmc
+import geomjax.rmcmc.integrators as integrators
+import geomjax.rmcmc.metrics as metrics
+import geomjax.mcmc.metrics as metrics_hmc
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
-from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
-from geomjax.util import generate_gaussian_noise, pytree_size
-
-__all__ = ["GHMCState", "init", "build_kernel", "ghmc"]
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
+from geomjax.util import generate_gaussian_noise, pytree_size, linear_map
 
 
-class GHMCState(NamedTuple):
-    """State of the Generalized HMC algorithm.
+__all__ = ["GLMCState", "init", "build_kernel", "glmc"]
 
-    The Generalized HMC algorithm is persistent on its momentum, hence
-    taking as input a position and momentum pair, updating and returning
+
+class GLMCState(NamedTuple):
+    """State of the Generalized LMC algorithm.
+
+    The Generalized LMC algorithm is persistent on its velocity, hence
+    taking as input a position and velocity pair, updating and returning
     it for the next iteration. The algorithm also uses a persistent slice
     to perform a non-reversible Metropolis Hastings update, thus we also
     store the current slice variable and return its updated version after
@@ -43,39 +45,43 @@ class GHMCState(NamedTuple):
     """
 
     position: ArrayTree
-    momentum: ArrayTree
+    velocity: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
     slice: float
+    volume_adjustment: float
 
 
 def init(
     position: ArrayLikeTree,
     rng_key: PRNGKey,
     logdensity_fn: Callable,
-) -> GHMCState:
+) -> GLMCState:
     logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
 
-    key_mometum, key_slice = jax.random.split(rng_key)
-    momentum = generate_gaussian_noise(key_mometum, position)
+    key_velocity, key_slice = jax.random.split(rng_key)
+    velocity = generate_gaussian_noise(key_velocity, position)
     slice = jax.random.uniform(key_slice, minval=-1.0, maxval=1.0)
+    volume_adjustment = 0.0
 
-    return GHMCState(position, momentum, logdensity, logdensity_grad, slice)
+    return GLMCState(
+        position, velocity, logdensity, logdensity_grad, slice, volume_adjustment
+    )
 
 
 def build_kernel(
     noise_fn: Callable = lambda _: 0.0,
     divergence_threshold: float = 1000,
 ):
-    """Build a Generalized HMC kernel.
+    """Build a Generalized LMC kernel.
 
-    The Generalized HMC kernel performs a similar procedure to the standard HMC
-    kernel with the difference of a persistent momentum variable and a non-reversible
+    The Generalized LMC kernel performs a similar procedure to the standard LMC
+    kernel with the difference of a persistent velocity variable and a non-reversible
     Metropolis-Hastings step instead of the standard Metropolis-Hastings acceptance
-    step. This means that; apart from momentum and slice variables that are dependent
-    on the previous momentum and slice variables, and a Metropolis-Hastings step
-    performed (equivalently) as slice sampling; the standard HMC's implementation can
-    be re-used to perform Generalized HMC sampling.
+    step. This means that; apart from velocity and slice variables that are dependent
+    on the previous velocity and slice variables, and a Metropolis-Hastings step
+    performed (equivalently) as slice sampling; the standard LMC's implementation can
+    be re-used to perform Generalized LMC sampling.
 
     Parameters
     ----------
@@ -98,14 +104,14 @@ def build_kernel(
 
     def kernel(
         rng_key: PRNGKey,
-        state: GHMCState,
+        state: GLMCState,
         logdensity_fn: Callable,
         step_size: float,
-        momentum_inverse_scale: ArrayLikeTree,
+        metric_fn: Callable,
         alpha: float,
         delta: float,
-    ) -> tuple[GHMCState, hmc.HMCInfo]:
-        """Generate new sample with the Generalized HMC kernel.
+    ) -> tuple[GLMCState, lmc.LMCInfo]:
+        """Generate new sample with the Generalized LMC kernel.
 
         Parameters
         ----------
@@ -117,26 +123,28 @@ def build_kernel(
             (Unnormalized) Log density function being targeted.
         step_size
             Variable specifying the size of the integration step.
-        momentum_inverse_scale
-            Pytree with the same structure as the targeted position variable
-            specifying the per dimension inverse scaling transformation applied
-            to the persistent momentum variable prior to the integration step.
         alpha
-            Variable specifying the degree of persistent momentum, complementary
-            to independent new momentum.
+            Variable specifying the degree of persistent velocity, complementary
+            to independent new velocity.
         delta
             Fixed (non-random) amount of translation added at each new iteration
             to the slice variable for non-reversible slice sampling.
 
         """
 
-        flat_inverse_scale = jax.flatten_util.ravel_pytree(momentum_inverse_scale)[0]
-        _, kinetic_energy_fn, _ = metrics.gaussian_euclidean(flat_inverse_scale**2)
+        (
+            velocity_generator,
+            kinetic_energy_fn,
+            _,
+            omega_tilde_fn,
+            grad_logdetmetric,
+            metric_vector_product,
+        ) = metrics.gaussian_riemannian(metric_fn)
 
-        symplectic_integrator = integrators.velocity_verlet(
-            logdensity_fn, kinetic_energy_fn
+        symplectic_integrator = integrators.lan_integrator(
+            logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
         )
-        proposal_generator = hmc.hmc_proposal(
+        proposal_generator = lmc.lmc_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
             step_size,
@@ -144,25 +152,33 @@ def build_kernel(
             sample_proposal=sample_proposal,
         )
 
-        key_momentum, key_noise = jax.random.split(rng_key)
-        position, momentum, logdensity, logdensity_grad, slice = state
-        # New momentum is persistent
-        momentum = update_momentum(key_momentum, state, alpha)
-        momentum = jax.tree_map(lambda m, s: m / s, momentum, momentum_inverse_scale)
+        key_velocity, key_noise = jax.random.split(rng_key)
+        (
+            position,
+            velocity,
+            logdensity,
+            logdensity_grad,
+            slice,
+            volume_adjustment,
+        ) = state
+        # New velocity is persistent
+        velocity = update_velocity(key_velocity, state, alpha, velocity_generator)
+
         # Slice is non-reversible
         slice = ((slice + 1.0 + delta + noise_fn(key_noise)) % 2) - 1.0
 
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, velocity, logdensity, logdensity_grad, volume_adjustment
         )
         proposal, info = proposal_generator(slice, integrator_state)
-        proposal = hmc.flip_momentum(proposal)
-        state = GHMCState(
+        proposal = lmc.flip_velocity(proposal)
+        state = GLMCState(
             proposal.position,
-            jax.tree_map(lambda m, s: m * s, proposal.momentum, momentum_inverse_scale),
+            proposal.velocity,
             proposal.logdensity,
             proposal.logdensity_grad,
             info.acceptance_rate,
+            proposal.volume_adjustment,
         )
 
         return state, info
@@ -170,64 +186,62 @@ def build_kernel(
     return kernel
 
 
-def update_momentum(rng_key, state, alpha):
-    """Persistent update of the momentum variable.
+def update_velocity(rng_key, state, alpha, velocity_generator: Callable):
+    """Persistent update of the velocity variable.
 
-    Performs a persistent update of the momentum, taking as input the previous
-    momentum, a random number generating key and the parameter alpha. Outputs
-    an updated momentum that is a mixture of the previous momentum a new sample
+    Performs a persistent update of the velocity, taking as input the previous
+    velocity, a random number generating key and the parameter alpha. Outputs
+    an updated velocity that is a mixture of the previous velocity a new sample
     from a Gaussian density (dependent on alpha). The weights of the mixture of
     these two components are a function of alpha.
 
     """
-    position, momentum, *_ = state
+    position, velocity, *_ = state
 
-    m_size = pytree_size(momentum)
-    momentum_generator, *_ = metrics.gaussian_euclidean(1 / alpha * jnp.ones((m_size,)))
-    momentum = jax.tree_map(
-        lambda prev_momentum, shifted_momentum: prev_momentum * jnp.sqrt(1.0 - alpha)
-        + shifted_momentum,
-        momentum,
-        momentum_generator(rng_key, position),
+    velocity = jax.tree_map(
+        lambda prev_velocity, shifted_velocity: prev_velocity * jnp.sqrt(1.0 - alpha)
+        + jnp.sqrt(alpha) * shifted_velocity,
+        velocity,
+        velocity_generator(rng_key, position),
     )
 
-    return momentum
+    return velocity
 
 
-class ghmc:
-    """Implements the (basic) user interface for the Generalized HMC kernel.
+class glmc:
+    """Implements the (basic) user interface for the Generalized LMC kernel.
 
-    The Generalized HMC kernel performs a similar procedure to the standard HMC
-    kernel with the difference of a persistent momentum variable and a non-reversible
+    The Generalized LMC kernel performs a similar procedure to the standard LMC
+    kernel with the difference of a persistent velocity variable and a non-reversible
     Metropolis-Hastings step instead of the standard Metropolis-Hastings acceptance
     step.
 
-    This means that the sampling of the momentum variable depends on the previous
-    momentum, the rate of persistence depends on the alpha parameter, and that the
+    This means that the sampling of the velocity variable depends on the previous
+    velocity, the rate of persistence depends on the alpha parameter, and that the
     Metropolis-Hastings accept/reject step is done through slice sampling with a
     non-reversible slice variable also dependent on the previous slice, the determinisitc
     transformation is defined by the delta parameter.
 
-    The Generalized HMC does not have a trajectory length parameter, it always performs
+    The Generalized LMC does not have a trajectory length parameter, it always performs
     one iteration of the velocity verlet integrator with a given step size, making
     the algorithm a good candiate for running many chains in parallel.
 
     Examples
     --------
 
-    A new Generalized HMC kernel can be initialized and used with the following code:
+    A new Generalized LMC kernel can be initialized and used with the following code:
 
     .. code::
 
-        ghmc_kernel = geomjax.ghmc(logdensity_fn, step_size, alpha, delta)
-        state = ghmc_kernel.init(rng_key, position)
-        new_state, info = ghmc_kernel.step(rng_key, state)
+        glmc_kernel = blackjax.glmc(logdensity_fn, step_size, alpha, delta)
+        state = glmc_kernel.init(rng_key, position)
+        new_state, info = glmc_kernel.step(rng_key, state)
 
     We can JIT-compile the step function for better performance
 
     .. code::
 
-        step = jax.jit(ghmc_kernel.step)
+        step = jax.jit(glmc_kernel.step)
         new_state, info = step(rng_key, state)
 
     Parameters
@@ -239,7 +253,7 @@ class ghmc:
         values used for as a step size for each dimension of the target space in
         the velocity verlet integrator.
     alpha
-        The value defining the persistence of the momentum variable.
+        The value defining the persistence of the velocity variable.
     delta
         The value defining the deterministic translation of the slice variable.
     divergence_threshold
@@ -263,7 +277,7 @@ class ghmc:
         cls,
         logdensity_fn: Callable,
         step_size: float,
-        momentum_inverse_scale: ArrayLikeTree,
+        metric_fn: Callable,
         alpha: float,
         delta: float,
         *,
@@ -281,7 +295,7 @@ class ghmc:
                 state,
                 logdensity_fn,
                 step_size,
-                momentum_inverse_scale,
+                metric_fn,
                 alpha,
                 delta,
             )

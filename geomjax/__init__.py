@@ -6,6 +6,7 @@ from .mcmc.ghmc import ghmc
 from .mcmc.hmc import hmc
 from .mcmc.nuts import nuts
 from .rmcmc.lmc import lmc
+from .rmcmc.glmc import glmc
 from .rmcmc.nuts import nuts as nutslmc
 from .lmcmonge.lmc import lmc as lmcmonge
 from .lmcmonge.nuts import nutslmc as nutslmcmonge
@@ -15,12 +16,13 @@ from .optimizers import dual_averaging
 __all__ = [
     "__version__",
     "dual_averaging",  # optimizers
-    "ghmc",
-    "hmc",  # mcmc
+    "ghmc",  # mcmc
+    "hmc",
     "nuts",
-    "lmc",  # mcmc
+    "glmc",
+    "lmc",
     "nutslmc",
-    "lmcmonge",  # mcmc
+    "lmcmonge",
     "nutslmcmonge",
     "window_adaptation",  # mcmc adaptation
     "meads_adaptation",
