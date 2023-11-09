@@ -68,32 +68,6 @@ def lan_integrator(
         position, _ = ravel_pytree(position)
         logdensity_grad, _ = ravel_pytree(logdensity_grad)
 
-        # 1st volume adustment
-        Omega_tilde_term = omega_tilde_fn(position, velocity, step_size)
-        volume_adjustment -= jnp.linalg.slogdet(Omega_tilde_term)[1]
-
-        # half velocity update
-        dphi = -logdensity_grad + 0.5 * grad_logdetmetric(position)
-        v_temp = metric_vector_product(position, velocity) - 0.5 * step_size * dphi
-        v_update = jnp.linalg.solve(Omega_tilde_term, v_temp)
-
-        # 2nd volume adustment
-        Omega_tilde_term = omega_tilde_fn(position, v_update, -step_size)
-        volume_adjustment += jnp.linalg.slogdet(Omega_tilde_term)[1]
-
-        return unravel_fn(v_update), volume_adjustment
-
-    def half_step_fn_v2(
-        position: ArrayLikeTree,
-        velocity: ArrayLikeTree,
-        volume_adjustment: float,
-        logdensity_grad: ArrayLikeTree,
-        step_size: float,
-    ) -> tuple[ArrayTree, float]:
-        velocity, unravel_fn = ravel_pytree(velocity)
-        position, _ = ravel_pytree(position)
-        logdensity_grad, _ = ravel_pytree(logdensity_grad)
-
         # 1st volume adjustment
         Omega_tilde_term = omega_tilde_fn(position, velocity, step_size)
         lu, piv = lu_factor(Omega_tilde_term)
