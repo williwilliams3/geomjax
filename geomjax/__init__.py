@@ -7,6 +7,7 @@ from .mcmc.ghmc import ghmc
 from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
 from .rmcmc.lmc import lmc
+from .rmcmc.rmhmc import rmhmc
 from .rmcmc.glmc import glmc
 from .rmcmc.nuts import nuts as nutslmc
 from .lmcmonge.lmc import lmc as lmcmonge
@@ -17,18 +18,13 @@ from .optimizers import dual_averaging
 __all__ = [
     "__version__",
     "dual_averaging",  # optimizers
-<<<<<<< Updated upstream
-    "ghmc",  # mcmc
-    "hmc",
-    "nuts",
-    "glmc",
-=======
     "ghmc",
     "hmc",  # mcmc
     "dynamic_hmc",
     "nuts",
->>>>>>> Stashed changes
+    "glmc",
     "lmc",
+    "rmhmc",
     "nutslmc",
     "lmcmonge",
     "nutslmcmonge",
