@@ -209,11 +209,11 @@ def implicit_midpoint(
     """
     logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
     kinetic_energy_grad_fn = jax.grad(
-        lambda q, p: kinetic_energy_fn(p, position=q), argnums=(0, 1)
+        lambda q, p: kinetic_energy_fn(momentum=p, position=q), argnums=(0, 1)
     )
 
     def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
-        position, momentum, _, _ = state
+        position, momentum, *_ = state
 
         def _update(
             q: ArrayLikeTree,

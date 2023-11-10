@@ -622,7 +622,7 @@ def rmhmc_energy(kinetic_energy):
     def energy(state):
         return (
             -state.logdensity
-            + kinetic_energy(state.position, state.momentum)
+            + kinetic_energy(state.position, state.velocity)
             - state.volume_adjustment
         )
 

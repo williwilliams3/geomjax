@@ -85,7 +85,7 @@ def init(position: ArrayLikeTree, logdensity_fn: Callable):
 
 
 def build_kernel(
-    integrator: Callable = integrators.lan_integrator,
+    integrator: Callable = integrators.implicit_midpoint,
     divergence_threshold: float = 1000,
 ):
     """Build a RMHMC kernel.
@@ -119,14 +119,9 @@ def build_kernel(
             momentum_generator,
             kinetic_energy_fn,
             _,
-            omega_tilde_fn,
-            grad_logdetmetric,
-            metric_vector_product,
         ) = metrics.gaussian_riemannian_mommentum(metric_fn)
-        symplectic_integrator = integrator(
-            logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
-        )
-        proposal_generator = lmc_proposal(
+        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
+        proposal_generator = rmhmc_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
             step_size,
@@ -258,7 +253,7 @@ def rmhmc_proposal(
     """
     build_trajectory = trajectory.static_integration(integrator)
     init_proposal, generate_proposal = proposal.proposal_generator(
-        rmhmc_energy(kinetic_energy), divergence_threshold
+        rmhmc_energy(kinetic_energy)
     )
 
     def generate(
@@ -268,12 +263,13 @@ def rmhmc_proposal(
         end_state = build_trajectory(state, step_size, num_integration_steps)
         end_state = flip_momentum(end_state)
         proposal = init_proposal(state)
-        new_proposal, is_diverging = generate_proposal(proposal.energy, end_state)
+        new_proposal = generate_proposal(proposal.energy, end_state)
+        is_diverging = -new_proposal.weight > divergence_threshold
         sampled_proposal, *info = sample_proposal(rng_key, proposal, new_proposal)
         do_accept, p_accept = info
 
         info = RMHMCInfo(
-            state.momentum,
+            state.velocity,
             p_accept,
             do_accept,
             is_diverging,
@@ -298,7 +294,7 @@ def flip_momentum(
     should indeed retrieve the initial state (with flipped momentum).
 
     """
-    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
+    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
     return integrators.IntegratorState(
         state.position,
         flipped_momentum,
