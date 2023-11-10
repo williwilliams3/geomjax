@@ -247,6 +247,6 @@ def implicit_midpoint(
         _, dLdq = logdensity_and_grad_fn(q)
         q, p = _update(q, p, dLdq, initial=(q, p))
 
-        return IntegratorState(q, p, *logdensity_and_grad_fn(q), 0.0)
+        return IntegratorState(q, p, *logdensity_and_grad_fn(q), volume_adjustment=0.0)
 
     return one_step

@@ -140,7 +140,7 @@ def build_kernel(
         momentum = momentum_generator(key_momentum, position)
 
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, momentum, logdensity, logdensity_grad, volume_adjustment=0.0
         )
         proposal, info = proposal_generator(key_integrator, integrator_state)
         proposal = RMHMCState(
@@ -304,4 +304,5 @@ def flip_momentum(
         flipped_momentum,
         state.logdensity,
         state.logdensity_grad,
+        volume_adjustment=0.0,
     )
