@@ -17,15 +17,6 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-<<<<<<< Updated upstream
-import geomjax.mcmc.hmc as hmc
-import geomjax.mcmc.integrators as integrators
-import geomjax.mcmc.metrics as metrics
-import geomjax.mcmc.proposal as proposal
-from geomjax.base import SamplingAlgorithm
-from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
-from geomjax.util import generate_gaussian_noise, pytree_size
-=======
 import blackjax.mcmc.hmc as hmc
 import blackjax.mcmc.integrators as integrators
 import blackjax.mcmc.metrics as metrics
@@ -33,7 +24,6 @@ import blackjax.mcmc.proposal as proposal
 from blackjax.base import SamplingAlgorithm
 from blackjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 from blackjax.util import generate_gaussian_noise
->>>>>>> Stashed changes
 
 __all__ = ["GHMCState", "init", "build_kernel", "ghmc"]
 
