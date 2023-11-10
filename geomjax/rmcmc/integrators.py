@@ -140,7 +140,8 @@ def lan_integrator(
 
 
 FixedPointSolver = Callable[
-    [Callable[[PyTree], Tuple[PyTree, PyTree]], PyTree], Tuple[PyTree, PyTree, Any]
+    [Callable[[ArrayLikeTree], tuple[ArrayTree, ArrayTree]], ArrayLikeTree],
+    tuple[ArrayLikeTree, ArrayLikeTree, any],
 ]
 
 
@@ -151,20 +152,20 @@ class FixedPointIterationInfo(NamedTuple):
 
 
 def solve_fixed_point_iteration(
-    func: Callable[[PyTree], Tuple[PyTree, PyTree]],
-    x0: PyTree,
+    func: Callable[[ArrayLikeTree], tuple[ArrayLikeTree, ArrayLikeTree]],
+    x0: ArrayLikeTree,
     *,
     convergence_tol: float = 1e-6,
     divergence_tol: float = 1e10,
     max_iters: int = 100,
-    norm_fn: Callable[[PyTree], float] = lambda x: jnp.max(jnp.abs(x)),
-) -> Tuple[PyTree, PyTree, FixedPointIterationInfo]:
+    norm_fn: Callable[[ArrayLikeTree], float] = lambda x: jnp.max(jnp.abs(x)),
+) -> tuple[ArrayLikeTree, ArrayLikeTree, FixedPointIterationInfo]:
     """Solve for x = func(x) using a fixed point iteration"""
 
-    def compute_norm(x: PyTree, xp: PyTree) -> float:
+    def compute_norm(x: ArrayLikeTree, xp: ArrayLikeTree) -> float:
         return norm_fn(ravel_pytree(jax.tree_util.tree_map(jnp.subtract, x, xp))[0])
 
-    def cond_fn(args: Tuple[int, PyTree, PyTree, float]) -> bool:
+    def cond_fn(args: tuple[int, ArrayLikeTree, ArrayLikeTree, float]) -> bool:
         n, _, _, norm = args
         return (
             (n < max_iters)
@@ -174,8 +175,8 @@ def solve_fixed_point_iteration(
         )
 
     def body_fn(
-        args: Tuple[int, PyTree, PyTree, float]
-    ) -> Tuple[int, PyTree, PyTree, float]:
+        args: tuple[int, ArrayLikeTree, ArrayLikeTree, float]
+    ) -> tuple[int, ArrayLikeTree, ArrayLikeTree, float]:
         n, x, _, _ = args
         xn, aux = func(x)
         norm = compute_norm(xn, x)
@@ -191,11 +192,11 @@ def solve_fixed_point_iteration(
 
 def implicit_midpoint(
     logdensity_fn: Callable,
-    kinetic_energy_fn: KineticEnergy,
+    kinetic_energy_fn: Callable,
     *,
     solver: FixedPointSolver = solve_fixed_point_iteration,
-    **solver_kwargs: Any,
-) -> Integrator:
+    **solver_kwargs: any,
+) -> Callable[[IntegratorState, float], IntegratorState]:
     """The implicit midpoint integrator with support for non-stationary kinetic energy
 
     This is an integrator based on :cite:t:`brofos2021evaluating`, which provides
@@ -215,11 +216,11 @@ def implicit_midpoint(
         position, momentum, _, _ = state
 
         def _update(
-            q: PyTree,
-            p: PyTree,
-            dUdq: PyTree,
-            initial: Tuple[PyTree, PyTree] = (position, momentum),
-        ) -> Tuple[PyTree, PyTree]:
+            q: ArrayLikeTree,
+            p: ArrayLikeTree,
+            dUdq: ArrayLikeTree,
+            initial: tuple[ArrayLikeTree, ArrayLikeTree] = (position, momentum),
+        ) -> tuple[ArrayLikeTree, ArrayLikeTree]:
             dTdq, dHdp = kinetic_energy_grad_fn(q, p)
             dHdq = jax.tree_util.tree_map(jnp.subtract, dTdq, dUdq)
 
@@ -234,7 +235,7 @@ def implicit_midpoint(
             return q, p
 
         # Solve for the midpoint numerically
-        def _step(args: PyTree) -> Tuple[PyTree, PyTree]:
+        def _step(args: ArrayLikeTree) -> tuple[ArrayLikeTree, ArrayLikeTree]:
             q, p = args
             _, dLdq = logdensity_and_grad_fn(q)
             return _update(q, p, dLdq), dLdq
@@ -246,6 +247,6 @@ def implicit_midpoint(
         _, dLdq = logdensity_and_grad_fn(q)
         q, p = _update(q, p, dLdq, initial=(q, p))
 
-        return IntegratorState(q, p, *logdensity_and_grad_fn(q))
+        return IntegratorState(q, p, *logdensity_and_grad_fn(q), 0.0)
 
     return one_step

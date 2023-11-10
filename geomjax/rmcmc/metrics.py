@@ -30,10 +30,11 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import jax.scipy as jscipy
+import jax.scipy.stats as jss
 from jax.flatten_util import ravel_pytree
-
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import generate_gaussian_noise
+from typing import Optional
 
 __all__ = ["riemannian_euclidean"]
 
@@ -186,10 +187,10 @@ def gaussian_riemannian(
 
 
 def gaussian_riemannian_mommentum(
-    mass_matrix_fn: Callable,
-) -> Metric:
-    def momentum_generator(rng_key: PRNGKey, position: PyTree) -> PyTree:
-        mass_matrix = mass_matrix_fn(position)
+    metric_fn: Callable[[ArrayLikeTree], Array],
+) -> tuple[Callable, RiemannianKineticEnergy, Callable]:
+    def momentum_generator(rng_key: PRNGKey, position: ArrayTree) -> ArrayTree:
+        mass_matrix = metric_fn(position)
         ndim = jnp.ndim(mass_matrix)
         if ndim == 1:
             mass_matrix_sqrt = jnp.sqrt(mass_matrix)
@@ -203,21 +204,14 @@ def gaussian_riemannian_mommentum(
 
         return generate_gaussian_noise(rng_key, position, sigma=mass_matrix_sqrt)
 
-    def kinetic_energy(momentum: PyTree, position: Optional[PyTree] = None) -> float:
-        if position is None:
-            raise ValueError(
-                "A Reinmannian kinetic energy function must be called with the "
-                "position specified; make sure to use a Reinmannian-capable "
-                "integrator like `implicit_midpoint`."
-            )
-
+    def kinetic_energy(position: ArrayLikeTree, momentum: ArrayLikeTree) -> float:
         momentum, _ = ravel_pytree(momentum)
-        mass_matrix = mass_matrix_fn(position)
+        mass_matrix = metric_fn(position)
         ndim = jnp.ndim(mass_matrix)
         if ndim == 1:
-            return -jnp.sum(sp_stats.norm.logpdf(momentum, 0.0, jnp.sqrt(mass_matrix)))
+            return -jnp.sum(jss.norm.logpdf(momentum, 0.0, jnp.sqrt(mass_matrix)))
         elif ndim == 2:
-            return -sp_stats.multivariate_normal.logpdf(
+            return -jss.multivariate_normal.logpdf(
                 momentum, jnp.zeros_like(momentum), mass_matrix
             )
         else:
@@ -227,11 +221,11 @@ def gaussian_riemannian_mommentum(
             )
 
     def is_turning(
-        momentum_left: PyTree,
-        momentum_right: PyTree,
-        momentum_sum: PyTree,
-        position_left: Optional[PyTree] = None,
-        position_right: Optional[PyTree] = None,
+        momentum_left: ArrayLikeTree,
+        momentum_right: ArrayLikeTree,
+        momentum_sum: ArrayLikeTree,
+        position_left: Optional[ArrayLikeTree] = None,
+        position_right: Optional[ArrayLikeTree] = None,
     ) -> bool:
         del momentum_left, momentum_right, momentum_sum, position_left, position_right
         raise NotImplementedError(
@@ -258,4 +252,4 @@ def gaussian_riemannian_mommentum(
         # turning_at_right = jnp.dot(velocity_right, rho) <= 0
         # return turning_at_left | turning_at_right
 
-    return Metric(momentum_generator, kinetic_energy, is_turning)
+    return momentum_generator, kinetic_energy, is_turning
