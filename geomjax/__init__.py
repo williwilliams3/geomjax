@@ -1,9 +1,10 @@
+from .adaptation.chees_adaptation import chees_adaptation
 from .adaptation.meads_adaptation import meads_adaptation
 from .adaptation.window_adaptation import window_adaptation
 from .diagnostics import effective_sample_size as ess
 from .diagnostics import potential_scale_reduction as rhat
 from .mcmc.ghmc import ghmc
-from .mcmc.hmc import hmc
+from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
 from .rmcmc.lmc import lmc
 from .rmcmc.glmc import glmc
@@ -16,16 +17,24 @@ from .optimizers import dual_averaging
 __all__ = [
     "__version__",
     "dual_averaging",  # optimizers
+<<<<<<< Updated upstream
     "ghmc",  # mcmc
     "hmc",
     "nuts",
     "glmc",
+=======
+    "ghmc",
+    "hmc",  # mcmc
+    "dynamic_hmc",
+    "nuts",
+>>>>>>> Stashed changes
     "lmc",
     "nutslmc",
     "lmcmonge",
     "nutslmcmonge",
     "window_adaptation",  # mcmc adaptation
     "meads_adaptation",
+    "chees_adaptation",
     "ess",  # diagnostics
     "rhat",
 ]
