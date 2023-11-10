@@ -183,3 +183,79 @@ def gaussian_riemannian(
         grad_logdetmetric,
         metric_vector_product,
     )
+
+
+def gaussian_riemannian_mommentum(
+    mass_matrix_fn: Callable,
+) -> Metric:
+    def momentum_generator(rng_key: PRNGKey, position: PyTree) -> PyTree:
+        mass_matrix = mass_matrix_fn(position)
+        ndim = jnp.ndim(mass_matrix)
+        if ndim == 1:
+            mass_matrix_sqrt = jnp.sqrt(mass_matrix)
+        elif ndim == 2:
+            mass_matrix_sqrt = jscipy.linalg.cholesky(mass_matrix, lower=True)
+        else:
+            raise ValueError(
+                "The mass matrix has the wrong number of dimensions:"
+                f" expected 1 or 2, got {jnp.ndim(mass_matrix)}."
+            )
+
+        return generate_gaussian_noise(rng_key, position, sigma=mass_matrix_sqrt)
+
+    def kinetic_energy(momentum: PyTree, position: Optional[PyTree] = None) -> float:
+        if position is None:
+            raise ValueError(
+                "A Reinmannian kinetic energy function must be called with the "
+                "position specified; make sure to use a Reinmannian-capable "
+                "integrator like `implicit_midpoint`."
+            )
+
+        momentum, _ = ravel_pytree(momentum)
+        mass_matrix = mass_matrix_fn(position)
+        ndim = jnp.ndim(mass_matrix)
+        if ndim == 1:
+            return -jnp.sum(sp_stats.norm.logpdf(momentum, 0.0, jnp.sqrt(mass_matrix)))
+        elif ndim == 2:
+            return -sp_stats.multivariate_normal.logpdf(
+                momentum, jnp.zeros_like(momentum), mass_matrix
+            )
+        else:
+            raise ValueError(
+                "The mass matrix has the wrong number of dimensions:"
+                f" expected 1 or 2, got {jnp.ndim(mass_matrix)}."
+            )
+
+    def is_turning(
+        momentum_left: PyTree,
+        momentum_right: PyTree,
+        momentum_sum: PyTree,
+        position_left: Optional[PyTree] = None,
+        position_right: Optional[PyTree] = None,
+    ) -> bool:
+        del momentum_left, momentum_right, momentum_sum, position_left, position_right
+        raise NotImplementedError(
+            "NUTS sampling is not yet implemented for Riemannian manifolds"
+        )
+
+        # Here's a possible implementation of this function, but the NUTS
+        # proposal will require some refactoring to work properly, since we need
+        # to be able to access the coordinates at the left and right endpoints
+        # to compute the mass matrix at those points.
+
+        # m_left, _ = ravel_pytree(momentum_left)
+        # m_right, _ = ravel_pytree(momentum_right)
+        # m_sum, _ = ravel_pytree(momentum_sum)
+
+        # mass_matrix_left = mass_matrix_fn(position_left)
+        # mass_matrix_right = mass_matrix_fn(position_right)
+        # velocity_left = jnp.linalg.solve(mass_matrix_left, m_left)
+        # velocity_right = jnp.linalg.solve(mass_matrix_right, m_right)
+
+        # # rho = m_sum
+        # rho = m_sum - (m_right + m_left) / 2
+        # turning_at_left = jnp.dot(velocity_left, rho) <= 0
+        # turning_at_right = jnp.dot(velocity_right, rho) <= 0
+        # return turning_at_left | turning_at_right
+
+    return Metric(momentum_generator, kinetic_energy, is_turning)

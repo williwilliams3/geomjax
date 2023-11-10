@@ -137,3 +137,115 @@ def lan_integrator(
         )
 
     return one_step
+
+
+FixedPointSolver = Callable[
+    [Callable[[PyTree], Tuple[PyTree, PyTree]], PyTree], Tuple[PyTree, PyTree, Any]
+]
+
+
+class FixedPointIterationInfo(NamedTuple):
+    success: bool
+    norm: float
+    iters: int
+
+
+def solve_fixed_point_iteration(
+    func: Callable[[PyTree], Tuple[PyTree, PyTree]],
+    x0: PyTree,
+    *,
+    convergence_tol: float = 1e-6,
+    divergence_tol: float = 1e10,
+    max_iters: int = 100,
+    norm_fn: Callable[[PyTree], float] = lambda x: jnp.max(jnp.abs(x)),
+) -> Tuple[PyTree, PyTree, FixedPointIterationInfo]:
+    """Solve for x = func(x) using a fixed point iteration"""
+
+    def compute_norm(x: PyTree, xp: PyTree) -> float:
+        return norm_fn(ravel_pytree(jax.tree_util.tree_map(jnp.subtract, x, xp))[0])
+
+    def cond_fn(args: Tuple[int, PyTree, PyTree, float]) -> bool:
+        n, _, _, norm = args
+        return (
+            (n < max_iters)
+            & jnp.isfinite(norm)
+            & (norm < divergence_tol)
+            & (norm > convergence_tol)
+        )
+
+    def body_fn(
+        args: Tuple[int, PyTree, PyTree, float]
+    ) -> Tuple[int, PyTree, PyTree, float]:
+        n, x, _, _ = args
+        xn, aux = func(x)
+        norm = compute_norm(xn, x)
+        return n + 1, xn, aux, norm
+
+    x, aux = func(x0)
+    iters, x, aux, norm = jax.lax.while_loop(
+        cond_fn, body_fn, (0, x, aux, compute_norm(x, x0))
+    )
+    success = jnp.isfinite(norm) & (norm <= convergence_tol)
+    return x, aux, FixedPointIterationInfo(success, norm, iters)
+
+
+def implicit_midpoint(
+    logdensity_fn: Callable,
+    kinetic_energy_fn: KineticEnergy,
+    *,
+    solver: FixedPointSolver = solve_fixed_point_iteration,
+    **solver_kwargs: Any,
+) -> Integrator:
+    """The implicit midpoint integrator with support for non-stationary kinetic energy
+
+    This is an integrator based on :cite:t:`brofos2021evaluating`, which provides
+    support for kinetic energies that depend on position. This integrator requires that
+    the kinetic energy function takes two arguments: position and momentum.
+
+    The ``solver`` parameter allows overloading of the fixed point solver. By default, a
+    simple fixed point iteration is used, but more advanced solvers could be implemented
+    in the future.
+    """
+    logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
+    kinetic_energy_grad_fn = jax.grad(
+        lambda q, p: kinetic_energy_fn(p, position=q), argnums=(0, 1)
+    )
+
+    def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
+        position, momentum, _, _ = state
+
+        def _update(
+            q: PyTree,
+            p: PyTree,
+            dUdq: PyTree,
+            initial: Tuple[PyTree, PyTree] = (position, momentum),
+        ) -> Tuple[PyTree, PyTree]:
+            dTdq, dHdp = kinetic_energy_grad_fn(q, p)
+            dHdq = jax.tree_util.tree_map(jnp.subtract, dTdq, dUdq)
+
+            # Take a step from the _initial coordinates_ using the gradients of the
+            # Hamiltonian evaluated at the current guess for the midpoint
+            q = jax.tree_util.tree_map(
+                lambda q_, d_: q_ + 0.5 * step_size * d_, initial[0], dHdp
+            )
+            p = jax.tree_util.tree_map(
+                lambda p_, d_: p_ - 0.5 * step_size * d_, initial[1], dHdq
+            )
+            return q, p
+
+        # Solve for the midpoint numerically
+        def _step(args: PyTree) -> Tuple[PyTree, PyTree]:
+            q, p = args
+            _, dLdq = logdensity_and_grad_fn(q)
+            return _update(q, p, dLdq), dLdq
+
+        (q, p), dLdq, info = solver(_step, (position, momentum), **solver_kwargs)
+        del info  # TODO: Track the returned info
+
+        # Take an explicit update as recommended by Brofos & Lederman
+        _, dLdq = logdensity_and_grad_fn(q)
+        q, p = _update(q, p, dLdq, initial=(q, p))
+
+        return IntegratorState(q, p, *logdensity_and_grad_fn(q))
+
+    return one_step
