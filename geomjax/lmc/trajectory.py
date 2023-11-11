@@ -626,7 +626,7 @@ def lmc_energy(kinetic_energy):
     def energy(state):
         return (
             -state.logdensity
-            + kinetic_energy(state.position, state.velocity)
+            + kinetic_energy(position=state.position, velocity=state.velocity)
             - state.volume_adjustment
         )
 
