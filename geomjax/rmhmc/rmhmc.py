@@ -119,8 +119,9 @@ def build_kernel(
             momentum_generator,
             kinetic_energy_fn,
             _,
+            inverse_metric_vector_product,
         ) = metrics.gaussian_riemannian(metric_fn)
-        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
+        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn, metric_fn)
         proposal_generator = rmhmc_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
@@ -133,9 +134,10 @@ def build_kernel(
 
         position, logdensity, logdensity_grad = state
         momentum = momentum_generator(key_momentum, position)
+        velocity = inverse_metric_vector_product(position, momentum)
 
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, momentum, velocity, logdensity, logdensity_grad
         )
         proposal, info = proposal_generator(key_integrator, integrator_state)
         proposal = RMHMCState(
@@ -295,9 +297,11 @@ def flip_momentum(
 
     """
     flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
+    flipped_velocity = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
     return integrators.IntegratorState(
         state.position,
         flipped_momentum,
+        flipped_velocity,
         state.logdensity,
         state.logdensity_grad,
     )

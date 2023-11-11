@@ -18,6 +18,7 @@ import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 from geomjax.types import ArrayTree, ArrayLikeTree
+import geomjax.rmhmc.metrics as metrics
 
 __all__ = ["implicit_midpoint"]
 
@@ -31,17 +32,12 @@ class IntegratorState(NamedTuple):
 
     position: ArrayTree
     momentum: ArrayTree
+    velocity: ArrayLikeTree
     logdensity: float
     logdensity_grad: ArrayTree
 
 
 RiemannianIntegrator = Callable[[IntegratorState, float], IntegratorState]
-
-
-def new_integrator_state(logdensity_fn, position, momentum):
-    logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
-    return IntegratorState(position, momentum, logdensity, logdensity_grad)
-
 
 FixedPointSolver = Callable[
     [Callable[[ArrayLikeTree], tuple[ArrayTree, ArrayTree]], ArrayLikeTree],
@@ -97,6 +93,7 @@ def solve_fixed_point_iteration(
 def implicit_midpoint(
     logdensity_fn: Callable,
     kinetic_energy_fn: Callable,
+    metric_fn: Callable,
     *,
     solver: FixedPointSolver = solve_fixed_point_iteration,
     **solver_kwargs: any,
@@ -114,6 +111,9 @@ def implicit_midpoint(
     logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
     kinetic_energy_grad_fn = jax.grad(
         lambda q, p: kinetic_energy_fn(momentum=p, position=q), argnums=(0, 1)
+    )
+    _, _, _, inverse_metric_vector_product = metrics.gaussian_riemannian(
+        metric_fn=metric_fn
     )
 
     def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
@@ -151,6 +151,8 @@ def implicit_midpoint(
         _, dLdq = logdensity_and_grad_fn(q)
         q, p = _update(q, p, dLdq, initial=(q, p))
 
-        return IntegratorState(q, p, *logdensity_and_grad_fn(q))
+        v = inverse_metric_vector_product(q, p)
+
+        return IntegratorState(q, p, v, *logdensity_and_grad_fn(q))
 
     return one_step

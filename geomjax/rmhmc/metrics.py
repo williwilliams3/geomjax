@@ -100,4 +100,13 @@ def gaussian_riemannian(
         turning_at_right = jnp.dot(velocity_right, rho) <= 0
         return turning_at_left | turning_at_right
 
-    return momentum_generator, kinetic_energy, is_turning
+    def inverse_metric_vector_product(position: ArrayLikeTree, momentum: ArrayLikeTree):
+        metric = metric_fn(position)
+        ndim = jnp.ndim(metric)
+        if ndim == 1:  # diagonal mass matrix
+            velocity = jnp.multiply(1 / metric, momentum)
+        else:
+            velocity = jnp.linalg.solve(metric_fn(position), momentum)
+        return velocity
+
+    return momentum_generator, kinetic_energy, is_turning, inverse_metric_vector_product
