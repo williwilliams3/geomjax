@@ -41,7 +41,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from geomjax.lmcmonge.integrators import RiemannianIntegratorState
+from geomjax.rmhmc.integrators import IntegratorState
 from geomjax.mcmc.proposal import (
     Proposal,
     progressive_biased_sampling,
@@ -52,15 +52,13 @@ from geomjax.types import ArrayTree, PRNGKey
 
 
 class Trajectory(NamedTuple):
-    leftmost_state: RiemannianIntegratorState
-    rightmost_state: RiemannianIntegratorState
+    leftmost_state: IntegratorState
+    rightmost_state: IntegratorState
     velocity_sum: ArrayTree
     num_states: int
 
 
-def append_to_trajectory(
-    trajectory: Trajectory, state: RiemannianIntegratorState
-) -> Trajectory:
+def append_to_trajectory(trajectory: Trajectory, state: IntegratorState) -> Trajectory:
     """Append a state to the (right of the) trajectory to form a new trajectory."""
     velocity_sum = jax.tree_util.tree_map(
         jnp.add, trajectory.velocity_sum, state.velocity
@@ -115,8 +113,8 @@ def static_integration(
     """Generate a trajectory by integrating several times in one direction."""
 
     def integrate(
-        initial_state: RiemannianIntegratorState, step_size, num_integration_steps
-    ) -> RiemannianIntegratorState:
+        initial_state: IntegratorState, step_size, num_integration_steps
+    ) -> IntegratorState:
         directed_step_size = jax.tree_util.tree_map(
             lambda step_size: direction * step_size, step_size
         )
@@ -161,12 +159,12 @@ def dynamic_progressive_integration(
         which we say a transition is divergent.
 
     """
-    _, generate_proposal = proposal_generator(lmc_energy(kinetic_energy))
+    _, generate_proposal = proposal_generator(rmhmc_energy(kinetic_energy))
     sample_proposal = progressive_uniform_sampling
 
     def integrate(
         rng_key: PRNGKey,
-        initial_state: RiemannianIntegratorState,
+        initial_state: IntegratorState,
         direction: int,
         termination_state,
         max_num_steps: int,
@@ -320,12 +318,12 @@ def dynamic_recursive_integration(
         Bool to indicate whether to perform additional U turn check between two trajectory.
 
     """
-    _, generate_proposal = proposal_generator(lmc_energy(kinetic_energy))
+    _, generate_proposal = proposal_generator(rmhmc_energy(kinetic_energy))
     sample_proposal = progressive_uniform_sampling
 
     def buildtree_integrate(
         rng_key: PRNGKey,
-        initial_state: RiemannianIntegratorState,
+        initial_state: IntegratorState,
         direction: int,
         tree_depth: int,
         step_size,
@@ -618,21 +616,8 @@ def dynamic_multiplicative_expansion(
     return expand
 
 
-def lmc_energy(kinetic_energy):
-    """
-    LMC: Adds the volume adjustment to the energy
-    """
-
+def rmhmc_energy(kinetic_energy):
     def energy(state):
-        return (
-            -state.logdensity
-            + kinetic_energy(
-                state.velocity,
-                state.alpha2,
-                state.logdensity_grad_norm,
-                state.determinant_metric,
-            )
-            - state.volume_adjustment
-        )
+        return -state.logdensity + kinetic_energy(state.position, state.momentum)
 
     return energy

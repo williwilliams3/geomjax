@@ -41,7 +41,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from geomjax.rmcmc.integrators import IntegratorState
+from geomjax.lmc.integrators import IntegratorState
 from geomjax.mcmc.proposal import (
     Proposal,
     progressive_biased_sampling,
@@ -159,9 +159,7 @@ def dynamic_progressive_integration(
         which we say a transition is divergent.
 
     """
-    _, generate_proposal = proposal_generator(
-        lmc_energy(kinetic_energy), divergence_threshold
-    )
+    _, generate_proposal = proposal_generator(lmc_energy(kinetic_energy))
     sample_proposal = progressive_uniform_sampling
 
     def integrate(
@@ -215,7 +213,8 @@ def dynamic_progressive_integration(
             rng_key, proposal_key = jax.random.split(rng_key)
 
             new_state = integrator(trajectory.rightmost_state, direction * step_size)
-            new_proposal, is_diverging = generate_proposal(initial_energy, new_state)
+            new_proposal = generate_proposal(initial_energy, new_state)
+            is_diverging = -new_proposal.weight > divergence_threshold
 
             # At step 0, we always accept the proposal, since we
             # take one step to get the leftmost state of the tree.
@@ -248,7 +247,7 @@ def dynamic_progressive_integration(
 
             return (rng_key, new_integration_state, (is_diverging, has_terminated))
 
-        proposal_placeholder, _ = generate_proposal(initial_energy, initial_state)
+        proposal_placeholder = generate_proposal(initial_energy, initial_state)
         trajectory_placeholder = Trajectory(
             initial_state, initial_state, initial_state.velocity, 0
         )
@@ -319,9 +318,7 @@ def dynamic_recursive_integration(
         Bool to indicate whether to perform additional U turn check between two trajectory.
 
     """
-    _, generate_proposal = proposal_generator(
-        lmc_energy(kinetic_energy), divergence_threshold
-    )
+    _, generate_proposal = proposal_generator(lmc_energy(kinetic_energy))
     sample_proposal = progressive_uniform_sampling
 
     def buildtree_integrate(
@@ -357,7 +354,8 @@ def dynamic_recursive_integration(
         if tree_depth == 0:
             # Base case - take one leapfrog step in the direction v.
             next_state = integrator(initial_state, direction * step_size)
-            new_proposal, is_diverging = generate_proposal(initial_energy, next_state)
+            new_proposal = generate_proposal(initial_energy, next_state)
+            is_diverging = -new_proposal.weight > divergence_threshold
             trajectory = Trajectory(next_state, next_state, next_state.velocity, 1)
             return (
                 rng_key,
@@ -626,7 +624,7 @@ def lmc_energy(kinetic_energy):
     def energy(state):
         return (
             -state.logdensity
-            + kinetic_energy(state.position, state.velocity)
+            + kinetic_energy(position=state.position, velocity=state.velocity)
             - state.volume_adjustment
         )
 
