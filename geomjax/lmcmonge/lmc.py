@@ -278,7 +278,7 @@ class lmc:
         kernel = cls.build_kernel(integrator, divergence_threshold)
 
         def init_fn(position: ArrayLikeTree):
-            return cls.init(position, logdensity_fn, alpha2)  # alpha2
+            return cls.init(position, logdensity_fn, alpha2)
 
         def step_fn(rng_key: PRNGKey, state):
             return kernel(

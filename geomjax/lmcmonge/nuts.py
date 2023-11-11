@@ -261,13 +261,14 @@ class nutslmc:
         step_size: float,
         inverse_mass_matrix: Array,
         *,
+        alpha2: float = 0.001,
         max_num_doublings: int = 10,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.lan_integrator,
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(integrator, divergence_threshold, max_num_doublings)
 
-        def init_fn(position: ArrayLikeTree, logdensity_fn: callable, alpha2: float):
+        def init_fn(position: ArrayLikeTree):
             return cls.init(position, logdensity_fn, alpha2)
 
         def step_fn(rng_key: PRNGKey, state):
