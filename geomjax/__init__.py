@@ -8,8 +8,10 @@ from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
 from .lmc.lmc import lmc
 from .rmhmc.rmhmc import rmhmc
+
 from .lmc.glmc import glmc
 from .lmc.nuts import nuts as nutslmc
+from .rmhmc.nuts import nuts as nutsrmhmc
 from .lmcmonge.lmc import lmc as lmcmonge
 from .lmcmonge.nuts import nutslmc as nutslmcmonge
 
@@ -24,6 +26,7 @@ __all__ = [
     "nuts",
     "glmc",
     "lmc",
+    "nutsrmhmc",
     "rmhmc",
     "nutslmc",
     "lmcmonge",

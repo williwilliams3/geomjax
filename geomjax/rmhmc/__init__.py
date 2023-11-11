@@ -1,3 +1,3 @@
-from . import rmhmc
+from . import rmhmc, nuts
 
-__all__ = ["rmhmc"]
+__all__ = ["rmhmc", "nuts"]
