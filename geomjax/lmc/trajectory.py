@@ -41,7 +41,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from geomjax.rmcmc.integrators import IntegratorState
+from geomjax.lmc.integrators import IntegratorState
 from geomjax.mcmc.proposal import (
     Proposal,
     progressive_biased_sampling,

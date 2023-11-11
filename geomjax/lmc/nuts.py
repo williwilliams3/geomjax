@@ -19,12 +19,12 @@ import jax.numpy as jnp
 import numpy as np
 import geomjax.mcmc.proposal as proposal
 import geomjax.mcmc.termination as termination
-import geomjax.rmcmc.lmc as lmc
-import geomjax.rmcmc.integrators as integrators
-import geomjax.rmcmc.metrics as metrics
-import geomjax.rmcmc.trajectory as trajectory
+import geomjax.lmc.lmc as lmc
+import geomjax.lmc.integrators as integrators
+import geomjax.lmc.metrics as metrics
+import geomjax.lmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = ["NUTSInfo", "init", "build_kernel", "nuts"]
 

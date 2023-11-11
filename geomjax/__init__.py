@@ -6,10 +6,10 @@ from .diagnostics import potential_scale_reduction as rhat
 from .mcmc.ghmc import ghmc
 from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
-from .rmcmc.lmc import lmc
-from .rmcmc.rmhmc import rmhmc
-from .rmcmc.glmc import glmc
-from .rmcmc.nuts import nuts as nutslmc
+from .lmc.lmc import lmc
+from .rmhmc.rmhmc import rmhmc
+from .lmc.glmc import glmc
+from .lmc.nuts import nuts as nutslmc
 from .lmcmonge.lmc import lmc as lmcmonge
 from .lmcmonge.nuts import nutslmc as nutslmcmonge
 

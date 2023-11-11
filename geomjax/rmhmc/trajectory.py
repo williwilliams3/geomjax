@@ -41,7 +41,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from geomjax.rmcmc.integrators import IntegratorState
+from geomjax.rmhmc.integrators import IntegratorState
 from geomjax.mcmc.proposal import (
     Proposal,
     progressive_biased_sampling,
@@ -620,10 +620,6 @@ def dynamic_multiplicative_expansion(
 
 def rmhmc_energy(kinetic_energy):
     def energy(state):
-        return (
-            -state.logdensity
-            + kinetic_energy(state.position, state.velocity)
-            - state.volume_adjustment
-        )
+        return -state.logdensity + kinetic_energy(state.position, state.momentum)
 
     return energy

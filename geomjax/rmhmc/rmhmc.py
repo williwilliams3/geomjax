@@ -17,11 +17,11 @@ from typing import Callable, NamedTuple, Union
 import jax
 
 import geomjax.mcmc.proposal as proposal
-import geomjax.rmcmc.integrators as integrators
-import geomjax.rmcmc.metrics as metrics
-import geomjax.rmcmc.trajectory as trajectory
+import geomjax.rmhmc.integrators as integrators
+import geomjax.rmhmc.metrics as metrics
+import geomjax.rmhmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.rmcmc.trajectory_rmhmc import rmhmc_energy
+from geomjax.rmhmc.trajectory import rmhmc_energy
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = ["init", "build_kernel", "rmhmc"]
@@ -119,7 +119,7 @@ def build_kernel(
             momentum_generator,
             kinetic_energy_fn,
             _,
-        ) = metrics.gaussian_riemannian_mommentum(metric_fn)
+        ) = metrics.gaussian_riemannian(metric_fn)
         symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
         proposal_generator = rmhmc_proposal(
             symplectic_integrator,
@@ -135,7 +135,7 @@ def build_kernel(
         momentum = momentum_generator(key_momentum, position)
 
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad, volume_adjustment=0.0
+            position, momentum, logdensity, logdensity_grad
         )
         proposal, info = proposal_generator(key_integrator, integrator_state)
         proposal = RMHMCState(
@@ -300,5 +300,4 @@ def flip_momentum(
         flipped_momentum,
         state.logdensity,
         state.logdensity_grad,
-        volume_adjustment=0.0,
     )
