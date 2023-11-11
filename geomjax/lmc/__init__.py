@@ -1,3 +1,3 @@
-from . import lmc, nuts, glmc, rmhmc
+from . import lmc, nuts, glmc
 
-__all__ = ["lmc", "glmc", "nuts", "rmhmc"]
+__all__ = ["lmc", "glmc", "nuts"]

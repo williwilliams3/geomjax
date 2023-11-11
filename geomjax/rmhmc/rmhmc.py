@@ -269,7 +269,7 @@ def rmhmc_proposal(
         do_accept, p_accept = info
 
         info = RMHMCInfo(
-            state.velocity,
+            state.momentum,
             p_accept,
             do_accept,
             is_diverging,
@@ -294,7 +294,7 @@ def flip_momentum(
     should indeed retrieve the initial state (with flipped momentum).
 
     """
-    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
+    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
     return integrators.IntegratorState(
         state.position,
         flipped_momentum,
