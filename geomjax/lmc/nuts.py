@@ -299,7 +299,7 @@ def iterative_nuts_proposal(
     def _compute_energy(state: integrators.IntegratorState) -> float:
         energy = (
             -state.logdensity
-            + kinetic_energy(positon=state.position, velocity=state.velocity)
+            + kinetic_energy(position=state.position, velocity=state.velocity)
             - state.volume_adjustment
         )
         return energy
