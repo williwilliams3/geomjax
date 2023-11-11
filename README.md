@@ -1,8 +1,9 @@
 # geomjax
- Riemannian Monte Carlo methods. Jax implementation of Lagrangian Monte Carlo and Lagrangian Monte Carlo on Monge Patches. Based on [blackjax](https://github.com/blackjax-devs/blackjax) library.
+ Jax implementation of Riemannian Monte Carlo methods based on [blackjax](https://github.com/blackjax-devs/blackjax) library.
 
- * Lagrangian Monte Carlo from Lan S., Stathopoulos V., Shahbaba B., and Girolami M. (2015), Markov Chain Monte Carlo from Lagrangian Dynamics. J Comput Graph Stat: 24(2):357-378.
- * LMC Monge from Lagrangian manifold Monte Carlo on Monge patches Marcelo Hartmann, Mark Girolami, Arto Klami Proceedings of The 25th International Conference on Artificial Intelligence and Statistics, PMLR 151:4764-4781, 2022.
+ * Riemann Manifold Langevin and Hamiltonian Monte Carlo (Girolami et al. 2011)
+ * Lagrangian Dynamical Monte Carlo (Lan et al. 2015).
+ * Lagrangian Manifold Monte Carlo on Monge patches (Hartmann et al. 2022)
 
 Install requirements by running in terminal `pip install -r requirements.txt` .
 The installation can be done terminal command  `pip install -e .` from the directory containing this README.
