@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss
 import geomjax
-import pandas as pd
 
 
 def inference_loop_multiple_chains(
@@ -53,18 +52,6 @@ class neal_funnel:
         inverse_jacobian = self.inverse_jacobian(theta)
         metric = inverse_jacobian.T @ inverse_jacobian
         return 0.5 * (metric + metric.T)
-
-
-def transform_states_vmap(arr):
-    # Works for vmap
-    n_samples, n_chains, n_params = arr.shape
-    arr_reshaped = arr.reshape(-1, n_params)
-    df = pd.DataFrame(
-        arr_reshaped, columns=["theta." + str(k) for k in range(n_params)], dtype=float
-    )
-    df["chain"] = jnp.tile(jnp.arange(n_chains), n_samples)
-    df["draw"] = jnp.repeat(jnp.arange(n_samples), n_chains)
-    return df
 
 
 if __name__ == "__main__":
