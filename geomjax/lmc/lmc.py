@@ -43,7 +43,7 @@ class LMCState(NamedTuple):
 
 
 class DynamicLMCState(NamedTuple):
-    """State of the dynamic HMC algorithm.
+    """State of the dynamic LMC algorithm.
 
     Adds a utility array for generating a pseudo or quasi-random sequence of
     number of integration steps.
@@ -188,7 +188,7 @@ def build_dynamic_kernel(
     next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
     integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
 ):
-    """Build a Dynamic HMC kernel where the number of integration steps is chosen randomly.
+    """Build a Dynamic LMC kernel where the number of integration steps is chosen randomly.
 
     Parameters
     ----------
@@ -219,14 +219,19 @@ def build_dynamic_kernel(
         metric_fn: Array,
         **integration_steps_kwargs,
     ) -> tuple[DynamicLMCState, LMCInfo]:
-        """Generate a new sample with the HMC kernel."""
+        """Generate a new sample with the LMC kernel."""
         num_integration_steps = integration_steps_fn(
             state.random_generator_arg, **integration_steps_kwargs
         )
-        hmc_state = LMCState(state.position, state.logdensity, state.logdensity_grad)
-        hmc_proposal, info = lmc_base(
+        lmc_state = LMCState(
+            state.position,
+            state.logdensity,
+            state.logdensity_grad,
+            state.volume_adjustment,
+        )
+        lmc_proposal, info = lmc_base(
             rng_key,
-            hmc_state,
+            lmc_state,
             logdensity_fn,
             step_size,
             metric_fn,
@@ -235,9 +240,10 @@ def build_dynamic_kernel(
         next_random_arg = next_random_arg_fn(state.random_generator_arg)
         return (
             DynamicLMCState(
-                hmc_proposal.position,
-                hmc_proposal.logdensity,
-                hmc_proposal.logdensity_grad,
+                lmc_proposal.position,
+                lmc_proposal.logdensity,
+                lmc_proposal.logdensity_grad,
+                lmc_proposal.volume_adjustment,
                 next_random_arg,
             ),
             info,
@@ -341,7 +347,7 @@ class lmc:
 
 
 class dynamic_lmc:
-    """Implements the (basic) user interface for the dynamic HMC kernel.
+    """Implements the (basic) user interface for the dynamic LMC kernel.
 
     Parameters
     ----------
@@ -380,7 +386,7 @@ class dynamic_lmc:
         metric_fn: Array,
         *,
         divergence_threshold: int = 1000,
-        integrator: Callable = integrators.velocity_verlet,
+        integrator: Callable = integrators.lan_integrator,
         next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
         integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
     ) -> SamplingAlgorithm:
