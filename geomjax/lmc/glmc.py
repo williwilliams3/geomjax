@@ -20,11 +20,10 @@ import jax.numpy as jnp
 import geomjax.lmc.lmc as lmc
 import geomjax.lmc.integrators as integrators
 import geomjax.lmc.metrics as metrics
-import geomjax.mcmc.metrics as metrics_hmc
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
-from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
-from geomjax.util import generate_gaussian_noise, pytree_size, linear_map
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
+from geomjax.util import generate_gaussian_noise
 
 
 __all__ = ["GLMCState", "init", "build_kernel", "glmc"]

@@ -16,7 +16,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-import geomjax.mcmc as mcmc
+from geomjax.lmc import glmc
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
@@ -164,6 +164,7 @@ def base():
 
 def meads_adaptation(
     logdensity_fn: Callable,
+    metric_fn: Callable,
     num_chains: int,
 ) -> AdaptationAlgorithm:
     """Adapt the parameters of the Generalized HMC algorithm.
@@ -202,11 +203,11 @@ def meads_adaptation(
 
     """
 
-    ghmc_kernel = mcmc.ghmc.build_kernel()
+    ghmc_kernel = glmc.build_kernel()
 
     adapt_init, adapt_update = base()
 
-    batch_init = jax.vmap(lambda p, r: mcmc.ghmc.init(p, r, logdensity_fn))
+    batch_init = jax.vmap(lambda p, r: glmc.init(p, r, logdensity_fn))
 
     def one_step(carry, rng_key):
         states, adaptation_state = carry
@@ -219,7 +220,7 @@ def meads_adaptation(
             states,
             logdensity_fn,
             adaptation_state.step_size,
-            adaptation_state.position_sigma,
+            metric_fn,
             adaptation_state.alpha,
             adaptation_state.delta,
         )
@@ -247,7 +248,8 @@ def meads_adaptation(
 
         parameters = {
             "step_size": last_adaptation_state.step_size,
-            "momentum_inverse_scale": last_adaptation_state.position_sigma,
+            # "momentum_inverse_scale": last_adaptation_state.position_sigma, # Used only for adaptation
+            "metric_fn": metric_fn,
             "alpha": last_adaptation_state.alpha,
             "delta": last_adaptation_state.delta,
         }
