@@ -356,8 +356,7 @@ class dynamic_lmc:
     step_size
         The value to use for the step size in the symplectic integrator.
     metric_fn
-        The value to use for the inverse mass matrix when drawing a value for
-        the momentum and computing the kinetic energy.
+        The metric function.
     divergence_threshold
         The absolute value of the difference in energy between two states above
         which we say that the transition is divergent. The default value is
@@ -383,7 +382,7 @@ class dynamic_lmc:
         cls,
         logdensity_fn: Callable,
         step_size: float,
-        metric_fn: Array,
+        metric_fn: Callable,
         *,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.lan_integrator,
