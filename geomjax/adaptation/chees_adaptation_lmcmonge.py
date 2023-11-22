@@ -50,6 +50,8 @@ class ChEESAdaptationState(NamedTuple):
     optim_state: optax.OptState
     random_generator_arg: Array
     step: int
+    alpha2: float
+    log_alpha2_moving_average: float
 
 
 def base(
@@ -139,6 +141,8 @@ def base(
             optim_state,
             random_generator_arg,
             step,
+            alpha2,
+            log_alpha2_ma,
         ) = initial_adaptation_state
 
         harmonic_mean = 1.0 / jnp.mean(
@@ -188,6 +192,7 @@ def base(
             acceptance_probabilities * trajectory_gradients, where=~is_divergent
         ) / jnp.sum(acceptance_probabilities, where=~is_divergent)
 
+        # Adaptation of trajectory length
         log_trajectory_length = jnp.log(trajectory_length)
         updates, optim_state_ = optim.update(
             trajectory_gradient, optim_state, log_trajectory_length
@@ -206,6 +211,23 @@ def base(
         ) * log_trajectory_length_ma + update_weight * new_log_trajectory_length
         new_trajectory_length = jnp.exp(new_log_trajectory_length_ma)
 
+        # Adaptation of warp parameter
+        log_alpha2 = jnp.log(alpha2)
+        updates, optim_state_ = optim.update(
+            trajectory_gradient, optim_state, log_alpha2
+        )
+        log_alpha2_ = optax.apply_updates(log_alpha2, updates)
+        new_log_alpha2, new_optim_state = jax.lax.cond(
+            jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
+            lambda _: (log_alpha2_, optim_state_),
+            lambda _: (log_alpha2, optim_state),
+            None,
+        )
+        new_log_alpha2_length_ma = (
+            1.0 - update_weight
+        ) * log_alpha2_ma + update_weight * new_log_alpha2
+        new_alpha2_length = jnp.exp(new_log_alpha2_length_ma)
+
         return ChEESAdaptationState(
             new_step_size,
             new_log_step_size_ma,
@@ -215,6 +237,7 @@ def base(
             new_optim_state,
             next_random_arg_fn(random_generator_arg),
             step + 1,
+            new_alpha2_length,
         )
 
     def init(random_generator_arg: Array, step_size: float):
@@ -227,6 +250,8 @@ def base(
             optim_state=optim.init(step_size),
             random_generator_arg=random_generator_arg,
             step=1,
+            alpha2=1.0,
+            log_alpha2_moving_average=0.0,
         )
 
     def update(
