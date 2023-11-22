@@ -213,20 +213,21 @@ def base(
 
         # Adaptation of warp parameter
         log_alpha2 = jnp.log(alpha2)
-        updates, optim_state_ = optim.update(
-            trajectory_gradient, optim_state, log_alpha2
-        )
-        log_alpha2_ = optax.apply_updates(log_alpha2, updates)
-        new_log_alpha2, new_optim_state = jax.lax.cond(
-            jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
-            lambda _: (log_alpha2_, optim_state_),
-            lambda _: (log_alpha2, optim_state),
-            None,
-        )
-        new_log_alpha2_length_ma = (
-            1.0 - update_weight
-        ) * log_alpha2_ma + update_weight * new_log_alpha2
-        new_alpha2_length = jnp.exp(new_log_alpha2_length_ma)
+        ## TODO: Derive gradient of ChEES wrt alpha2, by automatic differentiation of lans integrator
+        # updates, optim_state_ = optim.update(
+        #     trajectory_gradient, optim_state, log_alpha2
+        # )
+        # log_alpha2_ = optax.apply_updates(log_alpha2, updates)
+        # new_log_alpha2, new_optim_state = jax.lax.cond(
+        #     jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
+        #     lambda _: (log_alpha2_, optim_state_),
+        #     lambda _: (log_alpha2, optim_state),
+        #     None,
+        # )
+        # new_log_alpha2_length_ma = (
+        #     1.0 - update_weight
+        # ) * log_alpha2_ma + update_weight * new_log_alpha2
+        # new_alpha2_length = jnp.exp(new_log_alpha2_length_ma)
 
         return ChEESAdaptationState(
             new_step_size,
@@ -299,7 +300,7 @@ def base(
 
 def chees_adaptation(
     logprob_fn: Callable,
-    metric_fn: Callable,
+    inverse_mass_matrix: Array,
     num_chains: int,
     *,
     jitter_generator: Optional[Callable] = None,
@@ -387,7 +388,6 @@ def chees_adaptation(
                 jax.tree_util.tree_map(lambda p: p.shape[0] == num_chains, positions)
             )[0]
         ), "initial `positions` leading dimension must be equal to the `num_chains`"
-        num_dim = pytree_size(positions) // num_chains
 
         key_init, key_step = jax.random.split(rng_key)
 
@@ -427,7 +427,7 @@ def chees_adaptation(
                 step_fn,
                 logdensity_fn=logprob_fn,
                 step_size=adaptation_state.step_size,
-                metric_fn=metric_fn,
+                inverse_mass_matrix=inverse_mass_matrix,
                 trajectory_length_adjusted=adaptation_state.trajectory_length
                 / adaptation_state.step_size,
             )
@@ -467,8 +467,9 @@ def chees_adaptation(
             trajectory_length_adjusted,
         )
         parameters = {
+            "alpha2": jnp.exp(last_adaptation_state.log_alpha2_moving_average),
             "step_size": jnp.exp(last_adaptation_state.log_step_size_moving_average),
-            "metric_fn": metric_fn,
+            "inverse_mass_matrix": inverse_mass_matrix,
             "next_random_arg_fn": next_random_arg_fn,
             "integration_steps_fn": lambda arg: integration_steps_fn(
                 arg, trajectory_length_adjusted
