@@ -52,6 +52,7 @@ class ChEESAdaptationState(NamedTuple):
     step: int
     alpha2: float
     log_alpha2_moving_average: float
+    optim_state_alpha2: optax.OptState
 
 
 def base(
@@ -103,6 +104,7 @@ def base(
     def compute_parameters(
         proposed_positions: ArrayLikeTree,
         proposed_velocities: ArrayLikeTree,
+        proposed_derivatives_alpha2: ArrayLikeTree,
         initial_positions: ArrayLikeTree,
         acceptance_probabilities: Array,
         is_divergent: Array,
@@ -143,8 +145,10 @@ def base(
             step,
             alpha2,
             log_alpha2_ma,
+            optim_state_alpha2,
         ) = initial_adaptation_state
 
+        # Adaptation of step size
         harmonic_mean = 1.0 / jnp.mean(
             1.0 / acceptance_probabilities, where=~is_divergent
         )
@@ -178,7 +182,9 @@ def base(
         proposals_matrix = vmap_flatten_op(proposals_centered)
         initials_matrix = vmap_flatten_op(initials_centered)
         velocities_matrix = vmap_flatten_op(proposed_velocities)
+        derivatives_alpha2_matrix = vmap_flatten_op(proposed_derivatives_alpha2)
 
+        # Adaptation of Trajectory Length
         trajectory_gradients = (
             jitter_generator(random_generator_arg)
             * trajectory_length
@@ -192,7 +198,6 @@ def base(
             acceptance_probabilities * trajectory_gradients, where=~is_divergent
         ) / jnp.sum(acceptance_probabilities, where=~is_divergent)
 
-        # Adaptation of trajectory length
         log_trajectory_length = jnp.log(trajectory_length)
         updates, optim_state_ = optim.update(
             trajectory_gradient, optim_state, log_trajectory_length
@@ -212,22 +217,38 @@ def base(
         new_trajectory_length = jnp.exp(new_log_trajectory_length_ma)
 
         # Adaptation of warp parameter
+
+        alpha2_gradients = (
+            jitter_generator(random_generator_arg)
+            * trajectory_length
+            * (
+                jax.vmap(lambda p: jnp.dot(p, p))(proposals_matrix)
+                - jax.vmap(lambda p: jnp.dot(p, p))(initials_matrix)
+            )
+            * jax.vmap(lambda p, dalpha2: jnp.dot(p, dalpha2))(
+                proposals_matrix, derivatives_alpha2_matrix
+            )
+        )
+        alpha2_gradient = jnp.sum(
+            acceptance_probabilities * alpha2_gradients, where=~is_divergent
+        ) / jnp.sum(acceptance_probabilities, where=~is_divergent)
+
         log_alpha2 = jnp.log(alpha2)
-        ## TODO: Derive gradient of ChEES wrt alpha2, by automatic differentiation of lans integrator
-        # updates, optim_state_ = optim.update(
-        #     trajectory_gradient, optim_state, log_alpha2
-        # )
-        # log_alpha2_ = optax.apply_updates(log_alpha2, updates)
-        # new_log_alpha2, new_optim_state = jax.lax.cond(
-        #     jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
-        #     lambda _: (log_alpha2_, optim_state_),
-        #     lambda _: (log_alpha2, optim_state),
-        #     None,
-        # )
-        # new_log_alpha2_length_ma = (
-        #     1.0 - update_weight
-        # ) * log_alpha2_ma + update_weight * new_log_alpha2
-        # new_alpha2_length = jnp.exp(new_log_alpha2_length_ma)
+
+        updates, optim_state_alpha2_ = optim.update(
+            alpha2_gradient, optim_state_alpha2, log_alpha2
+        )
+        log_alpha2_ = optax.apply_updates(log_alpha2, updates)
+        new_log_alpha2, new_optim_state_alpha2 = jax.lax.cond(
+            jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
+            lambda _: (log_alpha2_, optim_state_alpha2_),
+            lambda _: (log_alpha2, optim_state_alpha2),
+            None,
+        )
+        new_log_alpha2_ma = (
+            1.0 - update_weight
+        ) * log_alpha2_ma + update_weight * new_log_alpha2
+        new_alpha2 = jnp.exp(new_log_alpha2_ma)
 
         return ChEESAdaptationState(
             new_step_size,
@@ -238,7 +259,9 @@ def base(
             new_optim_state,
             next_random_arg_fn(random_generator_arg),
             step + 1,
-            new_alpha2_length,
+            new_alpha2,
+            new_log_alpha2_ma,
+            new_optim_state_alpha2,
         )
 
     def init(random_generator_arg: Array, step_size: float):
@@ -431,6 +454,7 @@ def chees_adaptation(
                 trajectory_length_adjusted=adaptation_state.trajectory_length
                 / adaptation_state.step_size,
             )
+
             new_states, info = jax.vmap(_step_fn)(keys, states)
             new_adaptation_state = update(
                 adaptation_state,
