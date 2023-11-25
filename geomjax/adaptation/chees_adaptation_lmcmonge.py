@@ -13,7 +13,7 @@ import geomjax.optimizers.dual_averaging as dual_averaging
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm
 from geomjax.types import Array, ArrayLikeTree, PRNGKey
-from geomjax.util import pytree_size
+from geomjax.lmcmonge.lmc import LMCState
 
 # optimal tuning for HMC, see https://arxiv.org/abs/1001.4460
 OPTIMAL_TARGET_ACCEPTANCE_RATE = 0.651
@@ -282,6 +282,7 @@ def base(
         adaptation_state: ChEESAdaptationState,
         proposed_positions: ArrayLikeTree,
         proposed_velocities: ArrayLikeTree,
+        proposed_derivatives_alpha2: ArrayLikeTree,
         initial_positions: ArrayLikeTree,
         acceptance_probabilities: Array,
         is_divergent: Array,
@@ -310,6 +311,7 @@ def base(
         new_state = compute_parameters(
             proposed_positions,
             proposed_velocities,
+            proposed_derivatives_alpha2,
             initial_positions,
             acceptance_probabilities,
             is_divergent,
@@ -455,11 +457,42 @@ def chees_adaptation(
                 / adaptation_state.step_size,
             )
 
+            def trajectory_proposal_position(
+                alpha2,
+                position,
+                logdensity,
+                logdensity_grad,
+                volume_adjustment,
+                rng_key,
+            ):
+                """Compute propsed trajectory position."""
+                state = LMCState(
+                    alpha2, position, logdensity, logdensity_grad, volume_adjustment
+                )
+                # Build the kernel
+                state, info = step_fn(rng_key, state)
+                return info.proposal.state.position
+
+            def get_differentiation(state, key):
+                """Compute the derivative of the trajectory with respect to alpha2."""
+                alpha2, position, logdensity, logdensity_grad, volume_adjustment = state
+                return jax.jacfwd(trajectory_proposal_position, argnums=0)(
+                    alpha2,
+                    position,
+                    logdensity,
+                    logdensity_grad,
+                    volume_adjustment,
+                    key,
+                )
+
             new_states, info = jax.vmap(_step_fn)(keys, states)
+            new_dalpha2 = jax.vmap(get_differentiation)(keys, states)
+
             new_adaptation_state = update(
                 adaptation_state,
                 info.proposal.state.position,
                 info.proposal.state.velocity,
+                new_dalpha2,
                 states.position,
                 info.acceptance_rate,
                 info.is_divergent,
