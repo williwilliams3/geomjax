@@ -1,5 +1,8 @@
 from .adaptation.chees_adaptation import chees_adaptation
 from .adaptation.chees_adaptation_lmc import chees_adaptation as chees_adaptation_lmc
+from .adaptation.chees_adaptation_lmcmonge import (
+    chees_adaptation as chees_adaptation_lmcmonge,
+)
 from .adaptation.meads_adaptation import meads_adaptation
 from .adaptation.window_adaptation import window_adaptation
 from .diagnostics import effective_sample_size as ess
@@ -14,6 +17,7 @@ from .lmc.glmc import glmc
 from .lmc.nuts import nuts as nutslmc
 from .rmhmc.nuts import nuts as nutsrmhmc
 from .lmcmonge.lmc import lmc as lmcmonge
+from .lmcmonge.lmc import dynamic_lmc as dynamic_lmcmonge
 from .lmcmonge.nuts import nutslmc as nutslmcmonge
 
 from .optimizers import dual_averaging
@@ -32,11 +36,13 @@ __all__ = [
     "rmhmc",
     "nutslmc",
     "lmcmonge",
+    "dynamic_lmcmonge",
     "nutslmcmonge",
     "window_adaptation",  # mcmc adaptation
     "meads_adaptation",
     "chees_adaptation",
     "chees_adaptation_lmc",
+    "chees_adaptation_lmcmonge",
     "ess",  # diagnostics
     "rhat",
 ]

@@ -13,7 +13,7 @@ import geomjax.optimizers.dual_averaging as dual_averaging
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm
 from geomjax.types import Array, ArrayLikeTree, PRNGKey
-from geomjax.lmcmonge.lmc import LMCState
+from geomjax.lmcmonge.lmc import DynamicLMCState
 
 # optimal tuning for HMC, see https://arxiv.org/abs/1001.4460
 OPTIMAL_TARGET_ACCEPTANCE_RATE = 0.651
@@ -463,11 +463,17 @@ def chees_adaptation(
                 logdensity,
                 logdensity_grad,
                 volume_adjustment,
+                random_generator_arg,
                 rng_key,
             ):
                 """Compute propsed trajectory position."""
-                state = LMCState(
-                    alpha2, position, logdensity, logdensity_grad, volume_adjustment
+                state = DynamicLMCState(
+                    alpha2,
+                    position,
+                    logdensity,
+                    logdensity_grad,
+                    volume_adjustment,
+                    random_generator_arg,
                 )
                 # Build the kernel
                 state, info = step_fn(rng_key, state)
@@ -475,13 +481,21 @@ def chees_adaptation(
 
             def get_differentiation(state, key):
                 """Compute the derivative of the trajectory with respect to alpha2."""
-                alpha2, position, logdensity, logdensity_grad, volume_adjustment = state
+                (
+                    alpha2,
+                    position,
+                    logdensity,
+                    logdensity_grad,
+                    volume_adjustment,
+                    random_generator_arg,
+                ) = state
                 return jax.jacfwd(trajectory_proposal_position, argnums=0)(
                     alpha2,
                     position,
                     logdensity,
                     logdensity_grad,
                     volume_adjustment,
+                    random_generator_arg,
                     key,
                 )
 
