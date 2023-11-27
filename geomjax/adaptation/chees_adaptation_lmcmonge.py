@@ -264,7 +264,7 @@ def base(
             new_optim_state_alpha2,
         )
 
-    def init(random_generator_arg: Array, step_size: float):
+    def init(random_generator_arg: Array, step_size: float, alpha2: float):
         return ChEESAdaptationState(
             step_size=step_size,
             log_step_size_moving_average=0.0,
@@ -276,6 +276,7 @@ def base(
             step=1,
             alpha2=1.0,
             log_alpha2_moving_average=0.0,
+            optim_state_alpha2=optim.init(1.0),
         )
 
     def update(
@@ -383,6 +384,8 @@ def chees_adaptation(
         Optional function that generates a value in [0, 1] used to jitter the trajectory
         lengths given a PRNGKey, used to propose the number of integration steps. If None,
         then a quasi-random Halton is used to jitter the trajectory length.
+    alpha2:
+        Warp parameter of the jittered LMC algorithm.
     jitter_value
         A percentage in [0, 1] representing how much of the calculated trajectory should be jitted.
     target_acceptance_rate
@@ -406,6 +409,7 @@ def chees_adaptation(
         optim: optax.GradientTransformation,
         num_steps: int = 1000,
         *,
+        alpha2: float = 0.001,
         max_sampling_steps: int = 1000,
     ):
         assert all(
@@ -519,10 +523,10 @@ def chees_adaptation(
             )
 
         batch_init = jax.vmap(
-            lambda p: lmc.init_dynamic(p, logprob_fn, init_random_arg)
+            lambda p: lmc.init_dynamic(p, logprob_fn, alpha2, init_random_arg)
         )
         init_states = batch_init(positions)
-        init_adaptation_state = init(init_random_arg, step_size)
+        init_adaptation_state = init(init_random_arg, step_size, alpha2)
 
         keys_step = jax.random.split(key_step, num_steps)
         (last_states, last_adaptation_state), info = jax.lax.scan(
