@@ -384,8 +384,6 @@ def chees_adaptation(
         Optional function that generates a value in [0, 1] used to jitter the trajectory
         lengths given a PRNGKey, used to propose the number of integration steps. If None,
         then a quasi-random Halton is used to jitter the trajectory length.
-    alpha2:
-        Warp parameter of the jittered LMC algorithm.
     jitter_value
         A percentage in [0, 1] representing how much of the calculated trajectory should be jitted.
     target_acceptance_rate
