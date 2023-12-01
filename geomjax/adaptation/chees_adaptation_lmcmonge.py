@@ -446,6 +446,7 @@ def chees_adaptation(
             jitter_gn, next_random_arg_fn, optim, target_acceptance_rate, decay_rate
         )
 
+        @jax.jit
         def one_step(carry, rng_key):
             states, adaptation_state = carry
 
@@ -481,7 +482,6 @@ def chees_adaptation(
                 state, info = _step_fn(rng_key, state)
                 return info.proposal.state.position
 
-            @jax.jit
             def get_differentiation(key, state):
                 """Compute the derivative of the trajectory with respect to alpha2."""
                 (
