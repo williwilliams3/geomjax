@@ -478,10 +478,11 @@ def chees_adaptation(
                     random_generator_arg,
                 )
                 # Build the kernel
-                state, info = step_fn(rng_key, state)
+                state, info = _step_fn(rng_key, state)
                 return info.proposal.state.position
 
-            def get_differentiation(state, key):
+            @jax.jit
+            def get_differentiation(key, state):
                 """Compute the derivative of the trajectory with respect to alpha2."""
                 (
                     alpha2,
@@ -491,7 +492,7 @@ def chees_adaptation(
                     volume_adjustment,
                     random_generator_arg,
                 ) = state
-                return jax.jacfwd(trajectory_proposal_position, argnums=0)(
+                dalpha2 = jax.jacfwd(trajectory_proposal_position, argnums=0)(
                     alpha2,
                     position,
                     logdensity,
@@ -500,6 +501,7 @@ def chees_adaptation(
                     random_generator_arg,
                     key,
                 )
+                return dalpha2
 
             new_states, info = jax.vmap(_step_fn)(keys, states)
             new_dalpha2 = jax.vmap(get_differentiation)(keys, states)
