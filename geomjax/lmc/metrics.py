@@ -83,16 +83,16 @@ def gaussian_riemannian(
         shape = jnp.shape(metric)[:1]  # type: ignore[arg-type]
         metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
-            metric_sqrt = jnp.sqrt(jnp.reciprocal(metric))
+            metric_invsqrt = jnp.sqrt(jnp.reciprocal(metric))
         elif ndim == 2:
             # inverse mass matrix can be factored into L*L.T. We want the cholesky
             # factor (inverse of L.T) of the mass matrix.
             L = jscipy.linalg.cholesky(metric, lower=True)
             identity = jnp.identity(shape[0])
-            metric_sqrt = jscipy.linalg.solve_triangular(
+            metric_invsqrt = jscipy.linalg.solve_triangular(
                 L, identity, lower=True, trans=True
             )
-        return generate_gaussian_noise(rng_key, position, sigma=metric_sqrt)
+        return generate_gaussian_noise(rng_key, position, sigma=metric_invsqrt)
 
     def kinetic_energy(
         position: ArrayLikeTree,
@@ -102,10 +102,10 @@ def gaussian_riemannian(
         velocity, _ = ravel_pytree(velocity)
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)  # type: ignore[arg-type]
-        metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
             logdetG = jnp.sum(jnp.log(metric))
         elif ndim == 2:
+            metric = 0.5 * (metric + metric.T)
             _, logdetG = jnp.linalg.slogdet(metric)
         kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(metric @ velocity, velocity)
         return kinetic_energy_val
