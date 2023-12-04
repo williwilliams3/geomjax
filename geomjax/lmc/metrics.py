@@ -83,7 +83,7 @@ def gaussian_riemannian(
         shape = jnp.shape(metric)[:1]  # type: ignore[arg-type]
         metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
-            metric_invsqrt = jnp.sqrt(jnp.reciprocal(metric))
+            metric_invsqrt = 1 / jnp.sqrt(metric)
         elif ndim == 2:
             # inverse mass matrix can be factored into L*L.T. We want the cholesky
             # factor (inverse of L.T) of the mass matrix.
