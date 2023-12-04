@@ -66,7 +66,12 @@ def gaussian_riemannian(
     is_turning
         A function that determines whether a trajectory is turning back on
         itself given the values of the momentum along the trajectory.
-
+    omega_tilde_fn
+        Omega tilde function.
+    grad_logdetmetric
+        Gradient of the log determinant of the metric.
+    metric_vector_product
+        Metric vector product.
     """
 
     def velocity_generator(rng_key: PRNGKey, position: ArrayLikeTree) -> ArrayTree:
@@ -143,13 +148,16 @@ def gaussian_riemannian(
             partial_1 = jnp.diag(jnp.dot(d_g, velocity))
             partial_2 = d_g * velocity[:, None]
             partial_3 = d_g * velocity
+            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
+            result = jnp.diag(metric) + 0.5 * step_size * Omega_tilde
         else:
             # Einstein summation
             partial_1 = jnp.einsum("i,jli->lj", velocity, d_g)
             partial_2 = jnp.einsum("i,ilj->lj", velocity, d_g)
             partial_3 = jnp.einsum("i,ijl->lj", velocity, d_g)
-        Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
-        return metric + 0.5 * step_size * Omega_tilde
+            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
+            result = metric + 0.5 * step_size * Omega_tilde
+        return result
 
     def grad_logdetmetric(position: ArrayLikeTree) -> ArrayTree:
         metric = metric_fn(position)
