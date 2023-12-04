@@ -53,20 +53,13 @@ def gaussian_riemannian(
 
     Parameters
     ----------
-    inverse_mass_matrix
-        One or two-dimensional array corresponding respectively to a diagonal
-        or dense mass matrix. The inverse mass matrix is multiplied to a
-        flattened version of the Pytree in which the chain position is stored
-        (the current value of the random variables). The order of the variables
-        should thus match JAX's tree flattening order, and more specifically
-        that of `ravel_pytree`.
-        In particular, JAX sorts dictionaries by key when flattening them. The
-        value of each variables will appear in the flattened Pytree following
-        the order given by `sort(keys)`.
+    metric_fn
+        One or two-dimensional function corresponding respectively to a diagonal
+        or full metric tensor.
 
     Returns
     -------
-    momentum_generator
+    velocity_generator
         A function that generates a value for the momentum at random.
     kinetic_energy
         A function that returns the kinetic energy given the momentum.
