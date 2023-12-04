@@ -147,8 +147,7 @@ def gaussian_riemannian(
             # Einstein summation
             partial_1 = jnp.diag(jnp.dot(d_g, velocity))
             partial_2 = d_g * velocity[:, None]
-            partial_3 = d_g * velocity
-            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
+            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_2.T)
             result = jnp.diag(metric) + 0.5 * step_size * Omega_tilde
         else:
             # Einstein summation
