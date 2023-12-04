@@ -147,15 +147,15 @@ def gaussian_riemannian(
         d_g = jax.jacfwd(metric_fn)(position)
         if ndim == 1:
             # Einstein summation
-            partial_1 = jnp.einsum("i,il->l", velocity, d_g)
-            partial_3 = jnp.einsum("i,li->l", velocity, d_g)
-            Omega_tilde = partial_1 - 0.5 * partial_3
+            partial_1 = jnp.diag(jnp.dot(d_g, velocity))
+            partial_2 = d_g * velocity[:, None]
+            partial_3 = d_g * velocity
         else:
             # Einstein summation
             partial_1 = jnp.einsum("i,jli->lj", velocity, d_g)
             partial_2 = jnp.einsum("i,ilj->lj", velocity, d_g)
             partial_3 = jnp.einsum("i,ijl->lj", velocity, d_g)
-            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
+        Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
         return metric + 0.5 * step_size * Omega_tilde
 
     def grad_logdetmetric(position: ArrayLikeTree) -> ArrayTree:
