@@ -1,9 +1,8 @@
 numpy
-matplotlib>=3.5.0
+scipy
+matplotlib
 
 arviz
+jax
 flax
-jax>=0.4.16
-jaxlib>=0.4.16
-jaxopt
 optax
