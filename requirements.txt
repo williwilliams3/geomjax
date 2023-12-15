@@ -2,7 +2,7 @@
 numpy
 scipy
 matplotlib
-Arvin
+arviz
 
 jax>=0.4.16
 jaxlib>=0.4.16
