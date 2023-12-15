@@ -1,8 +1,9 @@
+# requirements.txt
 numpy
 scipy
 matplotlib
+Arvin
 
-arviz
-jax
-flax
-optax
+jax>=0.4.16
+jaxlib>=0.4.16
+
