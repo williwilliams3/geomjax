@@ -1,3 +1,10 @@
 numpy
 blackjax>=1.0.0
 matplotlib>=3.5.0
+
+arviz
+flax
+jax>=0.4.16
+jaxlib>=0.4.16
+jaxopt
+optax
