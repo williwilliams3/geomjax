@@ -3,6 +3,7 @@ numpy
 scipy
 matplotlib
 arviz
+fastprogress
 
 jax>=0.4.16
 jaxlib>=0.4.16
