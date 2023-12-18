@@ -6,7 +6,7 @@ from .diagnostics import potential_scale_reduction as rhat
 from .mcmc.ghmc import ghmc
 from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
-from .lmc.lmc import lmc
+from .lmc.lmc import lmc, LMCState
 from .rmhmc.rmhmc import rmhmc
 
 from .lmc.glmc import glmc
@@ -36,4 +36,5 @@ __all__ = [
     "chees_adaptation",
     "ess",  # diagnostics
     "rhat",
+    "LMCState",  # states
 ]

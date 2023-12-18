@@ -22,7 +22,7 @@ import geomjax.lmc.metrics as metrics
 import geomjax.lmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.lmc.trajectory import lmc_energy
-from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = ["LMCState", "LMCInfo", "init", "build_kernel", "lmc"]
 
