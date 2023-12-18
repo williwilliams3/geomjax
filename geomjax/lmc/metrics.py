@@ -102,10 +102,15 @@ def gaussian_riemannian(
         ndim = jnp.ndim(metric)  # type: ignore[arg-type]
         if ndim == 1:  # diagonal mass matrix
             logdetG = jnp.sum(jnp.log(metric))
+            kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                metric * velocity, velocity
+            )
         elif ndim == 2:
             metric = 0.5 * (metric + metric.T)
             _, logdetG = jnp.linalg.slogdet(metric)
-        kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(metric @ velocity, velocity)
+            kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                metric @ velocity, velocity
+            )
         return kinetic_energy_val
 
     def is_turning(
