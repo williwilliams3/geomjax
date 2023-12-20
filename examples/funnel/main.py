@@ -70,7 +70,7 @@ if __name__ == "__main__":
     ##############
     # LMC Fisher
     sampler = geomjax.lmc(logdensity_fn, step_size, metric_fn, num_integration_steps)
-    # Sample 1 chain
+    # Sample chains
     states = inference_loop_multiple_chains(
         rng_key, sampler, initial_position, num_samples, num_chains
     )

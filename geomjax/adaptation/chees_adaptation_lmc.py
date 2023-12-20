@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-import geomjax.mcmc.hmc as hmc
+import geomjax.lmc.lmc as lmc
 import geomjax.optimizers.dual_averaging as dual_averaging
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm
@@ -100,7 +100,7 @@ def base(
 
     def compute_parameters(
         proposed_positions: ArrayLikeTree,
-        proposed_momentums: ArrayLikeTree,
+        proposed_velocities: ArrayLikeTree,
         initial_positions: ArrayLikeTree,
         acceptance_probabilities: Array,
         is_divergent: Array,
@@ -114,8 +114,8 @@ def base(
         proposed_positions:
             A PyTree that contains the position proposed by the HMC algorithm of
             every chain (proposal that is accepted or rejected using MH).
-        proposed_momentums:
-            A PyTree that contains the momentum variable proposed by the HMC algorithm
+        proposed_velocities:
+            A PyTree that contains the velocity variable proposed by the HMC algorithm
             of every chain (proposal that is accepted or rejected using MH).
         initial_positions:
             A PyTree that contains the initial position at the start of the HMC
@@ -173,7 +173,7 @@ def base(
         vmap_flatten_op = jax.vmap(lambda p: jax.flatten_util.ravel_pytree(p)[0])
         proposals_matrix = vmap_flatten_op(proposals_centered)
         initials_matrix = vmap_flatten_op(initials_centered)
-        momentums_matrix = vmap_flatten_op(proposed_momentums)
+        velocities_matrix = vmap_flatten_op(proposed_velocities)
 
         trajectory_gradients = (
             jitter_generator(random_generator_arg)
@@ -182,7 +182,7 @@ def base(
                 jax.vmap(lambda p: jnp.dot(p, p))(proposals_matrix)
                 - jax.vmap(lambda p: jnp.dot(p, p))(initials_matrix)
             )
-            * jax.vmap(lambda p, m: jnp.dot(p, m))(proposals_matrix, momentums_matrix)
+            * jax.vmap(lambda p, v: jnp.dot(p, v))(proposals_matrix, velocities_matrix)
         )
         trajectory_gradient = jnp.sum(
             acceptance_probabilities * trajectory_gradients, where=~is_divergent
@@ -232,7 +232,7 @@ def base(
     def update(
         adaptation_state: ChEESAdaptationState,
         proposed_positions: ArrayLikeTree,
-        proposed_momentums: ArrayLikeTree,
+        proposed_velocities: ArrayLikeTree,
         initial_positions: ArrayLikeTree,
         acceptance_probabilities: Array,
         is_divergent: Array,
@@ -245,8 +245,8 @@ def base(
             The current state of the adaptation algorithm
         proposed_positions:
             The position proposed by the HMC algorithm of every chain.
-        proposed_momentums:
-            The momentum variable proposed by the HMC algorithm of every chain.
+        proposed_velocities:
+            The velocity variable proposed by the HMC algorithm of every chain.
         initial_positions:
             The initial position at the start of the HMC algorithm of every chain.
         acceptance_probabilities:
@@ -260,7 +260,7 @@ def base(
         """
         new_state = compute_parameters(
             proposed_positions,
-            proposed_momentums,
+            proposed_velocities,
             initial_positions,
             acceptance_probabilities,
             is_divergent,
@@ -274,6 +274,7 @@ def base(
 
 def chees_adaptation(
     logprob_fn: Callable,
+    metric_fn: Callable,
     num_chains: int,
     *,
     jitter_generator: Optional[Callable] = None,
@@ -318,7 +319,7 @@ def chees_adaptation(
             optim,
             num_warmup_steps,
         )
-        kernel = geomjax.dynamic_hmc(logprob_fn, **parameters).step
+        kernel = geomjax.dynamic_lmc(logprob_fn, **parameters).step
         new_states, info = jax.vmap(kernel)(key_sample, last_states)
 
     Parameters
@@ -384,7 +385,7 @@ def chees_adaptation(
                 dtype=int,
             )
 
-        step_fn = hmc.build_dynamic_kernel(
+        step_fn = lmc.build_dynamic_kernel(
             next_random_arg_fn=next_random_arg_fn,
             integration_steps_fn=integration_steps_fn,
         )
@@ -401,7 +402,7 @@ def chees_adaptation(
                 step_fn,
                 logdensity_fn=logprob_fn,
                 step_size=adaptation_state.step_size,
-                inverse_mass_matrix=jnp.ones(num_dim),
+                metric_fn=metric_fn,
                 trajectory_length_adjusted=adaptation_state.trajectory_length
                 / adaptation_state.step_size,
             )
@@ -409,7 +410,7 @@ def chees_adaptation(
             new_adaptation_state = update(
                 adaptation_state,
                 info.proposal.state.position,
-                info.proposal.state.momentum,
+                info.proposal.state.velocity,
                 states.position,
                 info.acceptance_rate,
                 info.is_divergent,
@@ -422,7 +423,7 @@ def chees_adaptation(
             )
 
         batch_init = jax.vmap(
-            lambda p: hmc.init_dynamic(p, logprob_fn, init_random_arg)
+            lambda p: lmc.init_dynamic(p, logprob_fn, init_random_arg)
         )
         init_states = batch_init(positions)
         init_adaptation_state = init(init_random_arg, step_size)
@@ -442,7 +443,7 @@ def chees_adaptation(
         )
         parameters = {
             "step_size": jnp.exp(last_adaptation_state.log_step_size_moving_average),
-            "inverse_mass_matrix": jnp.ones(num_dim),
+            "metric_fn": metric_fn,
             "next_random_arg_fn": next_random_arg_fn,
             "integration_steps_fn": lambda arg: integration_steps_fn(
                 arg, trajectory_length_adjusted

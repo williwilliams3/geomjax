@@ -45,6 +45,22 @@ class LMCState(NamedTuple):
     volume_adjustment: float
 
 
+class DynamicLMCState(NamedTuple):
+    """State of the dynamic LMC algorithm.
+
+    Adds a utility array for generating a pseudo or quasi-random sequence of
+    number of integration steps.
+
+    """
+
+    alpha2: float
+    position: ArrayTree
+    logdensity: float
+    logdensity_grad: ArrayTree
+    volume_adjustment: float
+    random_generator_arg: Array
+
+
 class LMCInfo(NamedTuple):
     """Additional information on the LMC transition.
 
@@ -92,6 +108,24 @@ def init(position: ArrayLikeTree, logdensity_fn: Callable, alpha2: float):
         logdensity,
         logdensity_grad,
         volume_adjustment,
+    )
+
+
+def init_dynamic(
+    position: ArrayLikeTree,
+    logdensity_fn: Callable,
+    alpha2: float,
+    random_generator_arg: Array,
+):
+    logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
+    volume_adjustment = 0.0
+    return DynamicLMCState(
+        alpha2,
+        position,
+        logdensity,
+        logdensity_grad,
+        volume_adjustment,
+        random_generator_arg,
     )
 
 
@@ -198,6 +232,78 @@ def build_kernel(
     return kernel
 
 
+def build_dynamic_kernel(
+    integrator: Callable = integrators.lan_integrator,
+    divergence_threshold: float = 1000,
+    next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
+    integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+):
+    """Build a Dynamic LMC kernel where the number of integration steps is chosen randomly.
+
+    Parameters
+    ----------
+    integrator
+        The symplectic integrator to use to integrate the Hamiltonian dynamics.
+    divergence_threshold
+        Value of the difference in energy above which we consider that the transition is divergent.
+    next_random_arg_fn
+        Function that generates the next `random_generator_arg` from its previous value.
+    integration_steps_fn
+        Function that generates the next pseudo or quasi-random number of integration steps in the
+        sequence, given the current `random_generator_arg`. Needs to return an `int`.
+
+    Returns
+    -------
+    A kernel that takes a rng_key and a Pytree that contains the current state
+    of the chain and that returns a new state of the chain along with
+    information about the transition.
+
+    """
+    lmc_base = build_kernel(integrator, divergence_threshold)
+
+    def kernel(
+        rng_key: PRNGKey,
+        state: DynamicLMCState,
+        logdensity_fn: Callable,
+        step_size: float,
+        inverse_mass_matrix: Array,
+        **integration_steps_kwargs,
+    ) -> tuple[DynamicLMCState, LMCInfo]:
+        """Generate a new sample with the LMC kernel."""
+        num_integration_steps = integration_steps_fn(
+            state.random_generator_arg, **integration_steps_kwargs
+        )
+        lmc_state = LMCState(
+            state.alpha2,
+            state.position,
+            state.logdensity,
+            state.logdensity_grad,
+            state.volume_adjustment,
+        )
+        lmc_proposal, info = lmc_base(
+            rng_key,
+            lmc_state,
+            logdensity_fn,
+            step_size,
+            inverse_mass_matrix,
+            num_integration_steps,
+        )
+        next_random_arg = next_random_arg_fn(state.random_generator_arg)
+        return (
+            DynamicLMCState(
+                lmc_proposal.alpha2,
+                lmc_proposal.position,
+                lmc_proposal.logdensity,
+                lmc_proposal.logdensity_grad,
+                lmc_proposal.volume_adjustment,
+                next_random_arg,
+            ),
+            info,
+        )
+
+    return kernel
+
+
 class lmc:
     """Implements the (basic) user interface for the LMC kernel.
 
@@ -291,6 +397,70 @@ class lmc:
             )
 
         return SamplingAlgorithm(init_fn, step_fn)
+
+
+class dynamic_lmc:
+    """Implements the (basic) user interface for the dynamic LMC kernel.
+
+    Parameters
+    ----------
+    logdensity_fn
+        The log-density function we wish to draw samples from.
+    step_size
+        The value to use for the step size in the symplectic integrator.
+    inverse_mass_matrix
+        The value to use for the inverse mass matrix when drawing a value for
+        the momentum and computing the kinetic energy.
+    divergence_threshold
+        The absolute value of the difference in energy between two states above
+        which we say that the transition is divergent. The default value is
+        commonly found in other libraries, and yet is arbitrary.
+    integrator
+        (algorithm parameter) The symplectic integrator to use to integrate the trajectory.
+    next_random_arg_fn
+        Function that generates the next `random_generator_arg` from its previous value.
+    integration_steps_fn
+        Function that generates the next pseudo or quasi-random number of integration steps in the
+        sequence, given the current `random_generator_arg`.
+
+
+    Returns
+    -------
+    A ``SamplingAlgorithm``.
+    """
+
+    init = staticmethod(init_dynamic)
+    build_kernel = staticmethod(build_dynamic_kernel)
+
+    def __new__(  # type: ignore[misc]
+        cls,
+        logdensity_fn: Callable,
+        step_size: float,
+        inverse_mass_matrix: Array,
+        *,
+        alpha2: float = 0.001,
+        divergence_threshold: int = 1000,
+        integrator: Callable = integrators.lan_integrator,
+        next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
+        integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+    ) -> SamplingAlgorithm:
+        kernel = cls.build_kernel(
+            integrator, divergence_threshold, next_random_arg_fn, integration_steps_fn
+        )
+
+        def init_fn(position: ArrayLikeTree, random_generator_arg: Array):
+            return cls.init(position, logdensity_fn, alpha2, random_generator_arg)
+
+        def step_fn(rng_key: PRNGKey, state):
+            return kernel(
+                rng_key,
+                state,
+                logdensity_fn,
+                step_size,
+                inverse_mass_matrix,
+            )
+
+        return SamplingAlgorithm(init_fn, step_fn)  # type: ignore[arg-type]
 
 
 def lmc_proposal(
