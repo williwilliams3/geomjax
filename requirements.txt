@@ -1,3 +1,10 @@
+# requirements.txt
 numpy
-blackjax>=1.0.0
-matplotlib>=3.5.0
+scipy
+matplotlib
+arviz
+fastprogress
+
+jax>=0.4.16
+jaxlib>=0.4.16
+

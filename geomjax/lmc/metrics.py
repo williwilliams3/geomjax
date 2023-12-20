@@ -53,27 +53,25 @@ def gaussian_riemannian(
 
     Parameters
     ----------
-    inverse_mass_matrix
-        One or two-dimensional array corresponding respectively to a diagonal
-        or dense mass matrix. The inverse mass matrix is multiplied to a
-        flattened version of the Pytree in which the chain position is stored
-        (the current value of the random variables). The order of the variables
-        should thus match JAX's tree flattening order, and more specifically
-        that of `ravel_pytree`.
-        In particular, JAX sorts dictionaries by key when flattening them. The
-        value of each variables will appear in the flattened Pytree following
-        the order given by `sort(keys)`.
+    metric_fn
+        One or two-dimensional function corresponding respectively to a diagonal
+        or full metric tensor.
 
     Returns
     -------
-    momentum_generator
+    velocity_generator
         A function that generates a value for the momentum at random.
     kinetic_energy
         A function that returns the kinetic energy given the momentum.
     is_turning
         A function that determines whether a trajectory is turning back on
         itself given the values of the momentum along the trajectory.
-
+    omega_tilde_fn
+        Omega tilde function.
+    grad_logdetmetric
+        Gradient of the log determinant of the metric.
+    metric_vector_product
+        Metric vector product.
     """
 
     def velocity_generator(rng_key: PRNGKey, position: ArrayLikeTree) -> ArrayTree:
@@ -83,16 +81,16 @@ def gaussian_riemannian(
         shape = jnp.shape(metric)[:1]  # type: ignore[arg-type]
         metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
-            metric_sqrt = jnp.sqrt(jnp.reciprocal(metric))
+            metric_invsqrt = 1 / jnp.sqrt(metric)
         elif ndim == 2:
             # inverse mass matrix can be factored into L*L.T. We want the cholesky
             # factor (inverse of L.T) of the mass matrix.
             L = jscipy.linalg.cholesky(metric, lower=True)
             identity = jnp.identity(shape[0])
-            metric_sqrt = jscipy.linalg.solve_triangular(
+            metric_invsqrt = jscipy.linalg.solve_triangular(
                 L, identity, lower=True, trans=True
             )
-        return generate_gaussian_noise(rng_key, position, sigma=metric_sqrt)
+        return generate_gaussian_noise(rng_key, position, sigma=metric_invsqrt)
 
     def kinetic_energy(
         position: ArrayLikeTree,
@@ -102,12 +100,17 @@ def gaussian_riemannian(
         velocity, _ = ravel_pytree(velocity)
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)  # type: ignore[arg-type]
-        metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
             logdetG = jnp.sum(jnp.log(metric))
+            kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                metric * velocity, velocity
+            )
         elif ndim == 2:
+            metric = 0.5 * (metric + metric.T)
             _, logdetG = jnp.linalg.slogdet(metric)
-        kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(metric @ velocity, velocity)
+            kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                metric @ velocity, velocity
+            )
         return kinetic_energy_val
 
     def is_turning(
@@ -147,16 +150,18 @@ def gaussian_riemannian(
         d_g = jax.jacfwd(metric_fn)(position)
         if ndim == 1:
             # Einstein summation
-            partial_1 = jnp.einsum("i,il->l", velocity, d_g)
-            partial_3 = jnp.einsum("i,li->l", velocity, d_g)
-            Omega_tilde = partial_1 - 0.5 * partial_3
+            partial_1 = jnp.diag(jnp.dot(d_g, velocity))
+            partial_2 = d_g * velocity[:, None]
+            Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_2.T)
+            result = jnp.diag(metric) + 0.5 * step_size * Omega_tilde
         else:
             # Einstein summation
             partial_1 = jnp.einsum("i,jli->lj", velocity, d_g)
             partial_2 = jnp.einsum("i,ilj->lj", velocity, d_g)
             partial_3 = jnp.einsum("i,ijl->lj", velocity, d_g)
             Omega_tilde = 0.5 * (partial_1 + partial_2 - partial_3)
-        return metric + 0.5 * step_size * Omega_tilde
+            result = metric + 0.5 * step_size * Omega_tilde
+        return result
 
     def grad_logdetmetric(position: ArrayLikeTree) -> ArrayTree:
         metric = metric_fn(position)
