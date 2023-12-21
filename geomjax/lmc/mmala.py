@@ -17,22 +17,18 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss
-
-import geomjax.lmc.diffusions as diffusions
+import geomjax.lmc.diffusions as diffusions, DiffusionState, get_Gamma_fn
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
-import geomjax.lmc.metrics as metrics
 from jax.flatten_util import ravel_pytree
 from jax.scipy.linalg import solve
-import scipy.stats as sps
-import numpy as np
 
 
-__all__ = ["MMALAState", "MMMALAState", "init", "build_kernel", "mmala"]
+__all__ = ["MMALAState", "MMALAInfo", "init", "build_kernel", "mmala"]
 
 
-class MALAState(NamedTuple):
+class MMALAState(NamedTuple):
     """State of the MALA algorithm.
 
     The MALA algorithm takes one position of the chain and returns another
@@ -47,7 +43,7 @@ class MALAState(NamedTuple):
     logdensity_grad: ArrayTree
 
 
-class MMALAState(NamedTuple):
+class MMALAInfo(NamedTuple):
     """Additional information on the MALA transition.
 
     This additional information can be used for debugging or computing
@@ -87,12 +83,11 @@ def build_kernel():
         new_position, _ = ravel_pytree(new_state.position)
         position, _ = ravel_pytree(state.position)
         logdensity_grad, _ = ravel_pytree(state.logdensity_grad)
-        metric = metric_fn(position)
+        metric, _ = ravel_pytree(state.metric)
+        Gamma, _ = ravel_pytree(state.Gamma)
+
         ndim = jnp.ndim(metric)
         if ndim == 1:
-            inv_metric_fn = lambda theta: 1 / metric_fn(theta)
-            d_invg = jax.jacfwd(inv_metric_fn)(position)
-            Gamma = jnp.diag(d_invg)
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g, n: p
                 + step_size * (g / metric)
@@ -106,10 +101,6 @@ def build_kernel():
                 jss.norm(mean_vector, covariance_vector).logpdf(new_position).sum()
             )
         else:
-            inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
-            d_invg = jax.jacfwd(inv_metric_fn)(position)
-            Gamma = jnp.einsum("ijj", d_invg)
-
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g, n: p
                 + step_size * solve(metric, g, assume_a="pos")
@@ -135,25 +126,33 @@ def build_kernel():
         logdensity_fn: Callable,
         step_size: float,
         metric_fn: Callable,
-    ) -> tuple[MMALAState, MMALAState]:
+    ) -> tuple[MMALAState, MMALAInfo]:
         """Generate a new sample with the MALA kernel."""
         grad_fn = jax.value_and_grad(logdensity_fn)
-        integrator = diffusions.overdamped_langevin_riemannian(grad_fn, metric_fn)
+        integrator = diffusions.overdamped_langevin_riemannian(grad_fn)
 
         key_integrator, key_rmh = jax.random.split(rng_key)
 
-        new_state = integrator(key_integrator, state, step_size)
-        new_state = MMALAState(*new_state)
+        integrator_state = DiffusionState(
+            *state, metric_fn(state.position), get_Gamma_fn(state, metric_fn)
+        )
+
+        new_integrator_state = integrator(key_integrator, integrator_state, step_size)
 
         proposal = init_proposal(state)
-        new_proposal = generate_proposal(state, new_state, step_size=step_size)
+        new_proposal = generate_proposal(
+            integrator_state, new_integrator_state, step_size=step_size
+        )
         sampled_proposal, do_accept, p_accept = sample_proposal(
             key_rmh, proposal, new_proposal
         )
-
-        info = MMALAState(p_accept, do_accept)
-
-        return sampled_proposal.state, info
+        info = MMALAInfo(p_accept, do_accept)
+        new_state = MMALAState(
+            sampled_proposal.state,
+            sampled_proposal.logdensity,
+            sampled_proposal.logdensity_grad,
+        )
+        return new_state, info
 
     return kernel
 

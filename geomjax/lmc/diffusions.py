@@ -28,21 +28,19 @@ class DiffusionState(NamedTuple):
     position: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
+    metric: ArrayTree
+    Gamma: ArrayTree
 
 
-def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
+def overdamped_langevin_riemannian(logdensity_grad_fn):
     """Euler solver for overdamped Langevin diffusion."""
 
     def one_step(rng_key, state: DiffusionState, step_size: float, batch: tuple = ()):
-        position, _, logdensity_grad = state
+        position, _, logdensity_grad, metric, Gamma = state
 
-        metric = metric_fn(position)
         ndim = jnp.ndim(metric)
 
         if ndim == 1:
-            inv_metric_fn = lambda theta: 1 / metric_fn(theta)
-            d_invg = jax.jacfwd(inv_metric_fn)(position)
-            Gamma = jnp.diag(d_invg)
             noise = generate_gaussian_noise(rng_key, position)
             position = jax.tree_util.tree_map(
                 lambda p, g, n: p
@@ -55,9 +53,6 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
             )
 
         else:
-            inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
-            d_invg = jax.jacfwd(inv_metric_fn)(position)
-            Gamma = jnp.diag(d_invg)
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g: p
                 + step_size * solve(metric, g, assume_a="pos")
@@ -82,3 +77,18 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
         return DiffusionState(position, logdensity, logdensity_grad)
 
     return one_step
+
+
+def get_Gamma_fn(state, metric_fn):
+    position, *_ = state
+    metric = metric_fn(position)
+    ndim = jnp.ndim(metric)
+    if ndim == 1:
+        inv_metric_fn = lambda theta: 1 / metric_fn(theta)
+        d_invg = jax.jacfwd(inv_metric_fn)(position)
+        Gamma = jnp.diag(d_invg)
+    else:
+        inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
+        d_invg = jax.jacfwd(inv_metric_fn)(position)
+        Gamma = jnp.diag(d_invg)
+    return Gamma
