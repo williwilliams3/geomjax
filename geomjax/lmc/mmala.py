@@ -17,7 +17,8 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss
-import geomjax.lmc.diffusions as diffusions, DiffusionState, get_Gamma_fn
+import geomjax.lmc.diffusions as diffusions
+from geomjax.lmc.diffusions import DiffusionState, get_Gamma_fn
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
@@ -25,22 +26,7 @@ from jax.flatten_util import ravel_pytree
 from jax.scipy.linalg import solve
 
 
-__all__ = ["MMALAState", "MMALAInfo", "init", "build_kernel", "mmala"]
-
-
-class MMALAState(NamedTuple):
-    """State of the MALA algorithm.
-
-    The MALA algorithm takes one position of the chain and returns another
-    position. In order to make computations more efficient, we also store
-    the current log-probability density as well as the current gradient of the
-    log-probability density.
-
-    """
-
-    position: ArrayTree
-    logdensity: float
-    logdensity_grad: ArrayTree
+__all__ = ["MMALAInfo", "init", "build_kernel", "mmala"]
 
 
 class MMALAInfo(NamedTuple):
@@ -61,10 +47,14 @@ class MMALAInfo(NamedTuple):
     is_accepted: bool
 
 
-def init(position: ArrayLikeTree, logdensity_fn: Callable) -> MMALAState:
+def init(
+    position: ArrayLikeTree, logdensity_fn: Callable, metric_fn=Callable
+) -> diffusions.DiffusionState:
     grad_fn = jax.value_and_grad(logdensity_fn)
     logdensity, logdensity_grad = grad_fn(position)
-    return MMALAState(position, logdensity, logdensity_grad)
+    metric = metric_fn(position)
+    Gamma = get_Gamma_fn(position, metric_fn)
+    return DiffusionState(position, logdensity, logdensity_grad, metric, Gamma)
 
 
 def build_kernel():
@@ -78,7 +68,7 @@ def build_kernel():
 
     """
 
-    def transition_energy(state, new_state, step_size, metric_fn):
+    def transition_energy(state, new_state, step_size):
         """Transition energy to go from `state` to `new_state`"""
         new_position, _ = ravel_pytree(new_state.position)
         position, _ = ravel_pytree(state.position)
@@ -89,10 +79,7 @@ def build_kernel():
         ndim = jnp.ndim(metric)
         if ndim == 1:
             mean_vector = jax.tree_util.tree_map(
-                lambda p, g, n: p
-                + step_size * (g / metric)
-                + Gamma
-                + jnp.sqrt(2 * step_size) * n / jnp.sqrt(metric),
+                lambda p, g: p + step_size * (g / metric) + Gamma,
                 position,
                 logdensity_grad,
             )
@@ -102,7 +89,7 @@ def build_kernel():
             )
         else:
             mean_vector = jax.tree_util.tree_map(
-                lambda p, g, n: p
+                lambda p, g: p
                 + step_size * solve(metric, g, assume_a="pos")
                 + step_size * Gamma,
                 position,
@@ -122,24 +109,20 @@ def build_kernel():
 
     def kernel(
         rng_key: PRNGKey,
-        state: MMALAState,
+        integrator_state: DiffusionState,
         logdensity_fn: Callable,
         step_size: float,
         metric_fn: Callable,
-    ) -> tuple[MMALAState, MMALAInfo]:
+    ) -> tuple[DiffusionState, MMALAInfo]:
         """Generate a new sample with the MALA kernel."""
         grad_fn = jax.value_and_grad(logdensity_fn)
-        integrator = diffusions.overdamped_langevin_riemannian(grad_fn)
+        integrator = diffusions.overdamped_langevin_riemannian(grad_fn, metric_fn)
 
         key_integrator, key_rmh = jax.random.split(rng_key)
 
-        integrator_state = DiffusionState(
-            *state, metric_fn(state.position), get_Gamma_fn(state, metric_fn)
-        )
-
         new_integrator_state = integrator(key_integrator, integrator_state, step_size)
 
-        proposal = init_proposal(state)
+        proposal = init_proposal(integrator_state)
         new_proposal = generate_proposal(
             integrator_state, new_integrator_state, step_size=step_size
         )
@@ -147,12 +130,7 @@ def build_kernel():
             key_rmh, proposal, new_proposal
         )
         info = MMALAInfo(p_accept, do_accept)
-        new_state = MMALAState(
-            sampled_proposal.state,
-            sampled_proposal.logdensity,
-            sampled_proposal.logdensity_grad,
-        )
-        return new_state, info
+        return sampled_proposal, info
 
     return kernel
 
@@ -216,7 +194,7 @@ class mmala:
         kernel = cls.build_kernel()
 
         def init_fn(position: ArrayLikeTree):
-            return cls.init(position, logdensity_fn)
+            return cls.init(position, logdensity_fn, metric_fn)
 
         def step_fn(rng_key: PRNGKey, state):
             return kernel(rng_key, state, logdensity_fn, step_size, metric_fn)

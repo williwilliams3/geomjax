@@ -19,9 +19,9 @@ import jax.numpy as jnp
 from geomjax.types import ArrayTree
 from jax.scipy.linalg import solve
 from geomjax.util import generate_gaussian_noise
-import jax.scipy.stats as jss
+from jax.flatten_util import ravel_pytree
 
-__all__ = ["overdamped_langevin"]
+__all__ = ["overdamped_langevin_riemannian", "DiffusionState", "get_Gamma_fn"]
 
 
 class DiffusionState(NamedTuple):
@@ -32,7 +32,7 @@ class DiffusionState(NamedTuple):
     Gamma: ArrayTree
 
 
-def overdamped_langevin_riemannian(logdensity_grad_fn):
+def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
     """Euler solver for overdamped Langevin diffusion."""
 
     def one_step(rng_key, state: DiffusionState, step_size: float, batch: tuple = ()):
@@ -74,13 +74,15 @@ def overdamped_langevin_riemannian(logdensity_grad_fn):
             )
 
         logdensity, logdensity_grad = logdensity_grad_fn(position, *batch)
-        return DiffusionState(position, logdensity, logdensity_grad)
+        metric = metric_fn(position)
+        Gamma = get_Gamma_fn(position, metric_fn)
+        return DiffusionState(position, logdensity, logdensity_grad, metric, Gamma)
 
     return one_step
 
 
-def get_Gamma_fn(state, metric_fn):
-    position, *_ = state
+def get_Gamma_fn(position, metric_fn):
+    position = ravel_pytree(position)[0]
     metric = metric_fn(position)
     ndim = jnp.ndim(metric)
     if ndim == 1:
