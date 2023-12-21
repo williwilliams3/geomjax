@@ -83,10 +83,10 @@ def build_kernel():
                 position,
                 logdensity_grad,
             )
-            covariance_vector = (2 * step_size) / metric
-            logdensity_new_position = (
-                jss.norm(mean_vector, covariance_vector).logpdf(new_position).sum()
-            )
+            scale_vector = jnp.sqrt(2 * step_size) / jnp.sqrt(metric)
+            logdensity_new_position = jss.norm.logpdf(
+                new_position, mean_vector, scale_vector
+            ).sum()
         else:
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g: p
@@ -96,9 +96,9 @@ def build_kernel():
                 logdensity_grad,
             )
             inv_metric = 0.5 * (inv_metric + inv_metric.T)
-            logdensity_new_position = jss.multivariate_normal(
-                mean_vector, (2 * step_size) * inv_metric
-            ).logpdf(new_position)
+            logdensity_new_position = jss.multivariate_normal.logpdf(
+                new_position, mean_vector, (2 * step_size) * inv_metric
+            )
 
         return -state.logdensity + logdensity_new_position
 
@@ -130,7 +130,7 @@ def build_kernel():
             key_rmh, proposal, new_proposal
         )
         info = MMALAInfo(p_accept, do_accept)
-        return sampled_proposal, info
+        return proposal.state, info
 
     return kernel
 
