@@ -38,10 +38,11 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
 
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)
-        d_g = jax.jacfwd(metric_fn)(position)
 
         if ndim == 1:
-            Gamma = jnp.diag(d_g)
+            inv_metric_fn = lambda theta: 1 / metric_fn(theta)
+            d_invg = jax.jacfwd(inv_metric_fn)(position)
+            Gamma = jnp.diag(d_invg)
             noise = generate_gaussian_noise(rng_key, position)
             position = jax.tree_util.tree_map(
                 lambda p, g, n: p
@@ -54,7 +55,9 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
             )
 
         else:
-            Gamma = jnp.diag(d_g)
+            inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
+            d_invg = jax.jacfwd(inv_metric_fn)(position)
+            Gamma = jnp.diag(d_invg)
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g: p
                 + step_size * solve(metric, g, assume_a="pos")
@@ -64,15 +67,15 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
             )
             # Naive implementation
             # Better: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.Covariance.from_precision.html
-            covariance_matrix = jnp.linalg.inv(metric)
-            covariance_matrix = 0.5 * (covariance_matrix + covariance_matrix.T)
+            inv_metric = jnp.linalg.inv(metric)
+            inv_metric = 0.5 * (inv_metric + inv_metric.T)
             position = jax.tree_util.tree_map(
                 lambda p, mu, Sigma: jax.random.multivariate_normal(
                     rng_key, mu, Sigma, dtype=p.dtype
                 ),
                 position,
                 mean_vector,
-                (2 * step_size) * covariance_matrix,
+                (2 * step_size) * inv_metric,
             )
 
         logdensity, logdensity_grad = logdensity_grad_fn(position, *batch)

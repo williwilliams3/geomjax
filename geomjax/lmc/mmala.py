@@ -89,9 +89,10 @@ def build_kernel():
         logdensity_grad, _ = ravel_pytree(state.logdensity_grad)
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)
-        d_g = jax.jacfwd(metric_fn)(position)
         if ndim == 1:
-            Gamma = jnp.diag(d_g)
+            inv_metric_fn = lambda theta: 1 / metric_fn(theta)
+            d_invg = jax.jacfwd(inv_metric_fn)(position)
+            Gamma = jnp.diag(d_invg)
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g, n: p
                 + step_size * (g / metric)
@@ -105,7 +106,10 @@ def build_kernel():
                 jss.norm(mean_vector, covariance_vector).logpdf(new_position).sum()
             )
         else:
-            Gamma = jnp.diag(d_g)
+            inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
+            d_invg = jax.jacfwd(inv_metric_fn)(position)
+            Gamma = jnp.einsum("ijj", d_invg)
+
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g, n: p
                 + step_size * solve(metric, g, assume_a="pos")
@@ -113,10 +117,9 @@ def build_kernel():
                 position,
                 logdensity_grad,
             )
-            covariance_matrix = jnp.linalg.inv(metric)
-            covariance_matrix = 0.5 * (covariance_matrix + covariance_matrix.T)
+            inv_metric = 0.5 * (inv_metric + inv_metric.T)
             logdensity_new_position = jss.multivariate_normal(
-                mean_vector, (2 * step_size) * covariance_matrix
+                mean_vector, (2 * step_size) * inv_metric
             ).logpdf(new_position)
 
         return -state.logdensity + logdensity_new_position
