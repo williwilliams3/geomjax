@@ -17,8 +17,8 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as jss
-import geomjax.lmc.diffusions as diffusions
-from geomjax.lmc.diffusions import DiffusionState, get_Gamma_fn
+import geomjax.lmcmc.diffusions as diffusions
+from geomjax.lmcmc.diffusions import DiffusionState, get_Gamma_fn
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
@@ -78,7 +78,7 @@ def build_kernel():
         ndim = jnp.ndim(metric)
         if ndim == 1:
             mean_vector = jax.tree_util.tree_map(
-                lambda p, g: p + step_size * (g / metric) + Gamma,
+                lambda p, g: p + step_size * (g / metric) + step_size * Gamma,
                 position,
                 logdensity_grad,
             )
@@ -100,7 +100,7 @@ def build_kernel():
                 new_position, mean_vector, (2 * step_size) * inv_metric
             )
 
-        return -state.logdensity + logdensity_new_position
+        return -state.logdensity - logdensity_new_position
 
     init_proposal, generate_proposal = proposal.asymmetric_proposal_generator(
         transition_energy

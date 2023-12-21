@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-import geomjax.lmc.lmc as lmc
+import geomjax.lmcmc.lmc as lmc
 import geomjax.optimizers.dual_averaging as dual_averaging
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm

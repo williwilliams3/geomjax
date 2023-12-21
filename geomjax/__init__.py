@@ -11,12 +11,12 @@ from .mcmc.ghmc import ghmc
 from .mcmc.mala import mala
 from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
-from .lmc.lmc import dynamic_lmc, lmc, LMCState
-from .lmc.mmala import mmala
+from .lmcmc.lmc import dynamic_lmc, lmc, LMCState
+from .lmcmc.mmala import mmala
 from .rmhmc.rmhmc import rmhmc
 
-from .lmc.glmc import glmc
-from .lmc.nuts import nuts as nutslmc
+from .lmcmc.glmc import glmc
+from .lmcmc.nuts import nuts as nutslmc
 from .rmhmc.nuts import nuts as nutsrmhmc
 from .lmcmonge.lmc import lmc as lmcmonge
 from .lmcmonge.lmc import dynamic_lmc as dynamic_lmcmonge

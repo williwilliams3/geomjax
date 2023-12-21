@@ -17,11 +17,11 @@ from typing import Callable, NamedTuple, Union
 import jax
 
 import geomjax.mcmc.proposal as proposal
-import geomjax.lmc.integrators as integrators
-import geomjax.lmc.metrics as metrics
-import geomjax.lmc.trajectory as trajectory
+import geomjax.lmcmc.integrators as integrators
+import geomjax.lmcmc.metrics as metrics
+import geomjax.lmcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.lmc.trajectory import lmc_energy
+from geomjax.lmcmc.trajectory import lmc_energy
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
 
 __all__ = ["LMCState", "LMCInfo", "init", "build_kernel", "lmc"]

@@ -17,9 +17,9 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-import geomjax.lmc.lmc as lmc
-import geomjax.lmc.integrators as integrators
-import geomjax.lmc.metrics as metrics
+import geomjax.lmcmc.lmc as lmc
+import geomjax.lmcmc.integrators as integrators
+import geomjax.lmcmc.metrics as metrics
 import geomjax.mcmc.metrics as metrics_hmc
 import geomjax.mcmc.proposal as proposal
 from geomjax.base import SamplingAlgorithm
