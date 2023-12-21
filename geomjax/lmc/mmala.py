@@ -73,9 +73,8 @@ def build_kernel():
         new_position, _ = ravel_pytree(new_state.position)
         position, _ = ravel_pytree(state.position)
         logdensity_grad, _ = ravel_pytree(state.logdensity_grad)
-        metric, _ = ravel_pytree(state.metric)
+        metric = state.metric
         Gamma, _ = ravel_pytree(state.Gamma)
-
         ndim = jnp.ndim(metric)
         if ndim == 1:
             mean_vector = jax.tree_util.tree_map(
@@ -95,6 +94,7 @@ def build_kernel():
                 position,
                 logdensity_grad,
             )
+            inv_metric = jnp.linalg.inv(metric)
             inv_metric = 0.5 * (inv_metric + inv_metric.T)
             logdensity_new_position = jss.multivariate_normal.logpdf(
                 new_position, mean_vector, (2 * step_size) * inv_metric
@@ -130,7 +130,7 @@ def build_kernel():
             key_rmh, proposal, new_proposal
         )
         info = MMALAInfo(p_accept, do_accept)
-        return proposal.state, info
+        return sampled_proposal.state, info
 
     return kernel
 

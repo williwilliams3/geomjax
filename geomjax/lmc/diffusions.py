@@ -82,15 +82,15 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
 
 
 def get_Gamma_fn(position, metric_fn):
-    position = ravel_pytree(position)[0]
+    position, _ = ravel_pytree(position)
     metric = metric_fn(position)
     ndim = jnp.ndim(metric)
     if ndim == 1:
         inv_metric_fn = lambda theta: 1 / metric_fn(theta)
         d_invg = jax.jacfwd(inv_metric_fn)(position)
         Gamma = jnp.diag(d_invg)
-    else:
+    elif ndim == 2:
         inv_metric_fn = lambda theta: jnp.linalg.inv(metric_fn(theta))
         d_invg = jax.jacfwd(inv_metric_fn)(position)
-        Gamma = jnp.diag(d_invg)
+        Gamma = jnp.einsum("ijj", d_invg)
     return Gamma
