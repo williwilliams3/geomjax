@@ -17,8 +17,9 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 from geomjax.types import ArrayTree
+from jax.scipy.linalg import solve
 from geomjax.util import generate_gaussian_noise
-from jax.scipy.linalg import cholesky, solve
+import jax.scipy.stats as jss
 
 __all__ = ["overdamped_langevin"]
 
@@ -34,13 +35,14 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
 
     def one_step(rng_key, state: DiffusionState, step_size: float, batch: tuple = ()):
         position, _, logdensity_grad = state
-        noise = generate_gaussian_noise(rng_key, position)
 
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)
         d_g = jax.jacfwd(metric_fn)(position)
+
         if ndim == 1:
             Gamma = jnp.diag(d_g)
+            noise = generate_gaussian_noise(rng_key, position)
             position = jax.tree_util.tree_map(
                 lambda p, g, n: p
                 + step_size * (g / metric)
@@ -50,16 +52,27 @@ def overdamped_langevin_riemannian(logdensity_grad_fn, metric_fn):
                 logdensity_grad,
                 noise,
             )
+
         else:
-            chol_factor = cholesky(metric, lower=True)
-            position = jax.tree_util.tree_map(
-                lambda p, g, n: p
-                + step_size * solve(metric, g, assume_a=True)
-                + step_size * Gamma
-                + jnp.sqrt(2 * step_size) * solve(chol_factor, n),
+            Gamma = jnp.diag(d_g)
+            mean_vector = jax.tree_util.tree_map(
+                lambda p, g: p
+                + step_size * solve(metric, g, assume_a="pos")
+                + step_size * Gamma,
                 position,
                 logdensity_grad,
-                noise,
+            )
+            # Naive implementation
+            # Better: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.Covariance.from_precision.html
+            covariance_matrix = jnp.linalg.inv(metric)
+            covariance_matrix = 0.5 * (covariance_matrix + covariance_matrix.T)
+            position = jax.tree_util.tree_map(
+                lambda p, mu, Sigma: jax.random.multivariate_normal(
+                    rng_key, mu, Sigma, dtype=p.dtype
+                ),
+                position,
+                mean_vector,
+                (2 * step_size) * covariance_matrix,
             )
 
         logdensity, logdensity_grad = logdensity_grad_fn(position, *batch)

@@ -24,7 +24,10 @@ from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 import geomjax.lmc.metrics as metrics
 from jax.flatten_util import ravel_pytree
-from jax.scipy.linalg import cholesky, solve
+from jax.scipy.linalg import solve
+import scipy.stats as sps
+import numpy as np
+
 
 __all__ = ["MMALAState", "MMMALAState", "init", "build_kernel", "mmala"]
 
@@ -97,25 +100,26 @@ def build_kernel():
                 position,
                 logdensity_grad,
             )
-            covariance_vector = 2 * step_size * metric
-            theta_dot = jss.norm(mean_vector, covariance_vector).logpdf(new_position)
+            covariance_vector = (2 * step_size) / metric
+            logdensity_new_position = (
+                jss.norm(mean_vector, covariance_vector).logpdf(new_position).sum()
+            )
         else:
             Gamma = jnp.diag(d_g)
             mean_vector = jax.tree_util.tree_map(
                 lambda p, g, n: p
-                + step_size * solve(metric, g, assume_a=True)
+                + step_size * solve(metric, g, assume_a="pos")
                 + step_size * Gamma,
                 position,
                 logdensity_grad,
             )
-            covariance_matrix = 2 * step_size * metric
-            theta_dot = (
-                jss.multivariate_normal(mean_vector, covariance_matrix)
-                .logpdf(new_position)
-                .sum()
-            )
+            covariance_matrix = jnp.linalg.inv(metric)
+            covariance_matrix = 0.5 * (covariance_matrix + covariance_matrix.T)
+            logdensity_new_position = jss.multivariate_normal(
+                mean_vector, (2 * step_size) * covariance_matrix
+            ).logpdf(new_position)
 
-        return -state.logdensity + 0.25 * (1.0 / step_size) * theta_dot
+        return -state.logdensity + logdensity_new_position
 
     init_proposal, generate_proposal = proposal.asymmetric_proposal_generator(
         transition_energy
