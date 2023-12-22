@@ -19,10 +19,10 @@ import jax.numpy as jnp
 import numpy as np
 import geomjax.mcmc.proposal as proposal
 import geomjax.mcmc.termination as termination
-import geomjax.lmc.lmc as lmc
-import geomjax.lmc.integrators as integrators
-import geomjax.lmc.metrics as metrics
-import geomjax.lmc.trajectory as trajectory
+import geomjax.lmcmc.lmc as lmc
+import geomjax.lmcmc.integrators as integrators
+import geomjax.lmcmc.metrics as metrics
+import geomjax.lmcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
