@@ -45,6 +45,7 @@ class MMALAInfo(NamedTuple):
 
     acceptance_rate: float
     is_accepted: bool
+    proposal: diffusions.DiffusionState
 
 
 def init(
@@ -129,7 +130,7 @@ def build_kernel():
         sampled_proposal, do_accept, p_accept = sample_proposal(
             key_rmh, proposal, new_proposal
         )
-        info = MMALAInfo(p_accept, do_accept)
+        info = MMALAInfo(p_accept, do_accept, new_proposal.state)
         return sampled_proposal.state, info
 
     return kernel
