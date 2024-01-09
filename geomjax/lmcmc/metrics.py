@@ -30,11 +30,9 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import jax.scipy as jscipy
-import jax.scipy.stats as jss
 from jax.flatten_util import ravel_pytree
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import generate_gaussian_noise
-from typing import Optional
 
 __all__ = ["riemannian_euclidean"]
 
@@ -42,7 +40,8 @@ RiemannianKineticEnergy = Callable[[ArrayLikeTree], float]
 
 
 def gaussian_riemannian(
-    metric_fn: Callable[[ArrayLikeTree], Array]
+    metric_fn: Callable[[ArrayLikeTree], Array],
+    is_cholesky: bool = False,
 ) -> tuple[Callable, RiemannianKineticEnergy, Callable]:
     r"""Hamiltonian dynamic on euclidean manifold with normally-distributed momentum :cite:p:`betancourt2013general`.
 
@@ -85,7 +84,13 @@ def gaussian_riemannian(
         elif ndim == 2:
             # inverse mass matrix can be factored into L*L.T. We want the cholesky
             # factor (inverse of L.T) of the mass matrix.
-            L = jscipy.linalg.cholesky(metric, lower=True)
+            if is_cholesky:
+                assert jnp.allclose(
+                    metric, jnp.tril(metric)
+                ), "Error: Lower triangular matrix expected"
+                L = metric
+            else:
+                L = jscipy.linalg.cholesky(metric, lower=True)
             identity = jnp.identity(shape[0])
             metric_invsqrt = jscipy.linalg.solve_triangular(
                 L, identity, lower=True, trans=True
@@ -106,11 +111,18 @@ def gaussian_riemannian(
                 metric * velocity, velocity
             )
         elif ndim == 2:
-            metric = 0.5 * (metric + metric.T)
-            _, logdetG = jnp.linalg.slogdet(metric)
-            kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
-                metric @ velocity, velocity
-            )
+            if is_cholesky:
+                logdetG = 2 * jnp.sum(jnp.log(jnp.diag(metric)))
+                velocity_normalized = metric.T @ velocity
+                kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                    velocity_normalized, velocity_normalized
+                )
+            else:
+                metric = 0.5 * (metric + metric.T)
+                _, logdetG = jnp.linalg.slogdet(metric)
+                kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
+                    metric @ velocity, velocity
+                )
         return kinetic_energy_val
 
     def is_turning(
@@ -145,9 +157,15 @@ def gaussian_riemannian(
         velocity: ArrayLikeTree,
         step_size: float,
     ) -> ArrayTree:
-        metric = metric_fn(position)
-        ndim = jnp.ndim(metric)
-        d_g = jax.jacfwd(metric_fn)(position)
+        if is_cholesky:
+            full_metric_fn = lambda theta: metric_fn(theta) @ metric_fn(theta).T
+            d_g = jax.jacfwd(full_metric_fn)(position)
+            metric = metric_fn(position)
+            metric = 0.5(metric + metric.T)
+        else:
+            metric = metric_fn(position)
+            ndim = jnp.ndim(metric)
+            d_g = jax.jacfwd(metric_fn)(position)
         if ndim == 1:
             # Einstein summation
             partial_1 = jnp.diag(jnp.dot(d_g, velocity))
@@ -169,17 +187,25 @@ def gaussian_riemannian(
         if ndim == 1:  # diagonal mass matrix
             logdet_metric_fn = lambda theta: jnp.sum(jnp.log(metric_fn(theta)))
         else:
-            logdet_metric_fn = lambda theta: jnp.linalg.slogdet(metric_fn(theta))[1]
+            if is_cholesky:
+                logdet_metric_fn = lambda theta: 2 * jnp.sum(
+                    jnp.log(jnp.diag(metric_fn(theta)))
+                )
+            else:
+                logdet_metric_fn = lambda theta: jnp.linalg.slogdet(metric_fn(theta))[1]
         grad_logdet_metric = jax.grad(logdet_metric_fn)(position)
         return grad_logdet_metric
 
     def metric_vector_product(position: ArrayLikeTree, velocity: ArrayLikeTree):
         metric = metric_fn(position)
+        if is_cholesky:
+            metric = metric @ metric.T
+            metric = 0.5(metric + metric.T)
         ndim = jnp.ndim(metric)
         if ndim == 1:  # diagonal mass matrix
             return jnp.multiply(metric, velocity)
         else:
-            return jnp.dot(metric_fn(position), velocity)
+            return jnp.dot(metric, velocity)
 
     return (
         velocity_generator,

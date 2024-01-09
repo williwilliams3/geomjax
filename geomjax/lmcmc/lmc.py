@@ -139,6 +139,7 @@ def build_kernel(
         step_size: float,
         metric_fn: Callable,
         num_integration_steps: int,
+        is_cholesky: bool,
     ) -> tuple[LMCState, LMCInfo]:
         """Generate a new sample with the LMC kernel."""
 
@@ -149,7 +150,7 @@ def build_kernel(
             omega_tilde_fn,
             grad_logdetmetric,
             metric_vector_product,
-        ) = metrics.gaussian_riemannian(metric_fn)
+        ) = metrics.gaussian_riemannian(metric_fn, is_cholesky=is_cholesky)
         symplectic_integrator = integrator(
             logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
         )
@@ -327,6 +328,7 @@ class lmc:
         *,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.lan_integrator,
+        is_cholesky: bool = False,
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(integrator, divergence_threshold)
 
@@ -341,6 +343,7 @@ class lmc:
                 step_size,
                 metric_fn,
                 num_integration_steps,
+                is_cholesky,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)
@@ -388,6 +391,7 @@ class dynamic_lmc:
         integrator: Callable = integrators.lan_integrator,
         next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
         integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+        is_cholesky: bool = False,
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(
             integrator, divergence_threshold, next_random_arg_fn, integration_steps_fn
@@ -403,6 +407,7 @@ class dynamic_lmc:
                 logdensity_fn,
                 step_size,
                 metric_fn,
+                is_cholesky,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)  # type: ignore[arg-type]
