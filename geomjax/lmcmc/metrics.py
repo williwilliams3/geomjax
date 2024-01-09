@@ -78,7 +78,6 @@ def gaussian_riemannian(
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)  # type: ignore[arg-type]
         shape = jnp.shape(metric)[:1]  # type: ignore[arg-type]
-        metric = 0.5 * (metric + metric.T)
         if ndim == 1:  # diagonal mass matrix
             metric_invsqrt = 1 / jnp.sqrt(metric)
         elif ndim == 2:
@@ -90,6 +89,7 @@ def gaussian_riemannian(
                 ), "Error: Lower triangular matrix expected"
                 L = metric
             else:
+                metric = 0.5 * (metric + metric.T)
                 L = jscipy.linalg.cholesky(metric, lower=True)
             identity = jnp.identity(shape[0])
             metric_invsqrt = jscipy.linalg.solve_triangular(
@@ -157,14 +157,14 @@ def gaussian_riemannian(
         velocity: ArrayLikeTree,
         step_size: float,
     ) -> ArrayTree:
+        metric = metric_fn(position)
+        ndim = jnp.ndim(metric)
         if is_cholesky:
             full_metric_fn = lambda theta: metric_fn(theta) @ metric_fn(theta).T
             d_g = jax.jacfwd(full_metric_fn)(position)
-            metric = metric_fn(position)
-            metric = 0.5(metric + metric.T)
+            metric = metric @ metric.T
+            metric = 0.5 * (metric + metric.T)
         else:
-            metric = metric_fn(position)
-            ndim = jnp.ndim(metric)
             d_g = jax.jacfwd(metric_fn)(position)
         if ndim == 1:
             # Einstein summation
@@ -200,7 +200,7 @@ def gaussian_riemannian(
         metric = metric_fn(position)
         if is_cholesky:
             metric = metric @ metric.T
-            metric = 0.5(metric + metric.T)
+            metric = 0.5 * (metric + metric.T)
         ndim = jnp.ndim(metric)
         if ndim == 1:  # diagonal mass matrix
             return jnp.multiply(metric, velocity)
