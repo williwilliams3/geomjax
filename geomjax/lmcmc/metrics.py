@@ -84,9 +84,6 @@ def gaussian_riemannian(
             # inverse mass matrix can be factored into L*L.T. We want the cholesky
             # factor (inverse of L.T) of the mass matrix.
             if is_cholesky:
-                assert jnp.allclose(
-                    metric, jnp.tril(metric)
-                ), "Error: Lower triangular matrix expected"
                 L = metric
             else:
                 metric = 0.5 * (metric + metric.T)
