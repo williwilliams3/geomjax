@@ -116,6 +116,7 @@ def build_kernel(
         step_size: float,
         metric_fn: Callable,
         max_num_doublings: int = 10,
+        is_cholesky: bool = False,
     ) -> tuple[lmc.LMCState, NUTSInfo]:
         """Generate a new sample with the NUTS kernel."""
 
@@ -126,7 +127,7 @@ def build_kernel(
             omega_tilde_fn,
             grad_logdetmetric,
             metric_vector_product,
-        ) = metrics.gaussian_riemannian(metric_fn)
+        ) = metrics.gaussian_riemannian(metric_fn, is_cholesky)
         symplectic_integrator = integrator(
             logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
         )
@@ -226,6 +227,7 @@ class nuts:
         max_num_doublings: int = 10,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.lan_integrator,
+        is_cholesky: bool = False,
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(integrator, divergence_threshold)
 
@@ -240,6 +242,7 @@ class nuts:
                 step_size,
                 metric_fn,
                 max_num_doublings,
+                is_cholesky,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)

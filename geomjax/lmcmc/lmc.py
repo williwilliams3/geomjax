@@ -218,6 +218,7 @@ def build_dynamic_kernel(
         logdensity_fn: Callable,
         step_size: float,
         metric_fn: Array,
+        is_cholesky: bool,
         **integration_steps_kwargs,
     ) -> tuple[DynamicLMCState, LMCInfo]:
         """Generate a new sample with the LMC kernel."""
@@ -237,6 +238,7 @@ def build_dynamic_kernel(
             step_size,
             metric_fn,
             num_integration_steps,
+            is_cholesky,
         )
         next_random_arg = next_random_arg_fn(state.random_generator_arg)
         return (

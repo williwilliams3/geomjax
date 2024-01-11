@@ -41,7 +41,7 @@ RiemannianKineticEnergy = Callable[[ArrayLikeTree], float]
 
 def gaussian_riemannian(
     metric_fn: Callable[[ArrayLikeTree], Array],
-    is_cholesky: bool = False,
+    is_cholesky: bool,
 ) -> tuple[Callable, RiemannianKineticEnergy, Callable]:
     r"""Hamiltonian dynamic on euclidean manifold with normally-distributed momentum :cite:p:`betancourt2013general`.
 
@@ -157,7 +157,13 @@ def gaussian_riemannian(
         metric = metric_fn(position)
         ndim = jnp.ndim(metric)
         if is_cholesky:
-            full_metric_fn = lambda theta: metric_fn(theta) @ metric_fn(theta).T
+
+            def full_metric_fn(theta):
+                metric = metric_fn(theta)
+                metric = metric @ metric.T
+                metric = 0.5 * (metric + metric.T)
+                return metric
+
             d_g = jax.jacfwd(full_metric_fn)(position)
             metric = metric @ metric.T
             metric = 0.5 * (metric + metric.T)
