@@ -280,6 +280,7 @@ def chees_adaptation(
     jitter_amount: float = 1.0,
     target_acceptance_rate: float = OPTIMAL_TARGET_ACCEPTANCE_RATE,
     decay_rate: float = 0.5,
+    inverse_mass_matrix: Optional[Array] = None,
 ) -> AdaptationAlgorithm:
     """Adapt the step size and trajectory length (number of integration steps / step size)
     parameters of the jittered HMC algorthm.
@@ -363,6 +364,9 @@ def chees_adaptation(
         ), "initial `positions` leading dimension must be equal to the `num_chains`"
         num_dim = pytree_size(positions) // num_chains
 
+        if inverse_mass_matrix is None:
+            inverse_mass_matrix = jnp.ones(num_dim)
+
         key_init, key_step = jax.random.split(rng_key)
 
         if jitter_generator is not None:
@@ -401,7 +405,7 @@ def chees_adaptation(
                 step_fn,
                 logdensity_fn=logprob_fn,
                 step_size=adaptation_state.step_size,
-                inverse_mass_matrix=jnp.ones(num_dim),
+                inverse_mass_matrix=inverse_mass_matrix,
                 trajectory_length_adjusted=adaptation_state.trajectory_length
                 / adaptation_state.step_size,
             )
@@ -442,7 +446,7 @@ def chees_adaptation(
         )
         parameters = {
             "step_size": jnp.exp(last_adaptation_state.log_step_size_moving_average),
-            "inverse_mass_matrix": jnp.ones(num_dim),
+            "inverse_mass_matrix": inverse_mass_matrix,
             "next_random_arg_fn": next_random_arg_fn,
             "integration_steps_fn": lambda arg: integration_steps_fn(
                 arg, trajectory_length_adjusted
