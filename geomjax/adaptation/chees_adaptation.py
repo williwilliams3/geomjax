@@ -275,6 +275,7 @@ def base(
 def chees_adaptation(
     logprob_fn: Callable,
     num_chains: int,
+    inverse_mass_matrix: ArrayLikeTree = None,
     *,
     jitter_generator: Optional[Callable] = None,
     jitter_amount: float = 1.0,
@@ -363,6 +364,11 @@ def chees_adaptation(
         ), "initial `positions` leading dimension must be equal to the `num_chains`"
         num_dim = pytree_size(positions) // num_chains
 
+        if inverse_mass_matrix is None:
+            inverse_mass = jnp.ones(num_dim)
+        else:
+            inverse_mass = inverse_mass_matrix
+
         key_init, key_step = jax.random.split(rng_key)
 
         if jitter_generator is not None:
@@ -401,7 +407,7 @@ def chees_adaptation(
                 step_fn,
                 logdensity_fn=logprob_fn,
                 step_size=adaptation_state.step_size,
-                inverse_mass_matrix=jnp.ones(num_dim),
+                inverse_mass_matrix=inverse_mass,
                 trajectory_length_adjusted=adaptation_state.trajectory_length
                 / adaptation_state.step_size,
             )
@@ -436,13 +442,10 @@ def chees_adaptation(
             last_adaptation_state.log_trajectory_length_moving_average
             - last_adaptation_state.log_step_size_moving_average
         )
-        print(
-            "integration_length",
-            trajectory_length_adjusted,
-        )
+
         parameters = {
             "step_size": jnp.exp(last_adaptation_state.log_step_size_moving_average),
-            "inverse_mass_matrix": jnp.ones(num_dim),
+            "inverse_mass_matrix": inverse_mass,
             "next_random_arg_fn": next_random_arg_fn,
             "integration_steps_fn": lambda arg: integration_steps_fn(
                 arg, trajectory_length_adjusted
