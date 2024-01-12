@@ -442,10 +442,7 @@ def chees_adaptation(
             last_adaptation_state.log_trajectory_length_moving_average
             - last_adaptation_state.log_step_size_moving_average
         )
-        print(
-            "integration_length",
-            trajectory_length_adjusted,
-        )
+
         parameters = {
             "step_size": jnp.exp(last_adaptation_state.log_step_size_moving_average),
             "inverse_mass_matrix": inverse_mass,
