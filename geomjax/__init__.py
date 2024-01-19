@@ -5,6 +5,7 @@ from .adaptation.chees_adaptation_lmcmonge import (
 )
 from .adaptation.meads_adaptation import meads_adaptation
 from .adaptation.window_adaptation import window_adaptation
+from .adaptation.step_size_adaptation import step_size_adaptation
 from .diagnostics import effective_sample_size as ess
 from .diagnostics import potential_scale_reduction as rhat
 from .mcmc.ghmc import ghmc
@@ -43,6 +44,7 @@ __all__ = [
     "mmala",
     "nutslmcmonge",
     "window_adaptation",  # mcmc adaptation
+    "step_size_adaptation",
     "meads_adaptation",
     "chees_adaptation",
     "chees_adaptation_lmc",
