@@ -185,7 +185,7 @@ def step_size_adaptation(
         step_size = adapt_final(last_warmup_state)
         parameters = {
             "step_size": step_size,
-            **extra_parameters,
+            # **extra_parameters,
         }
 
         return (
