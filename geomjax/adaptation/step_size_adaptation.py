@@ -63,7 +63,6 @@ def base(
         position: ArrayLikeTree, initial_step_size: float
     ) -> StepSizeAdaptationState:
         """Initialze the adaptation state and parameter values."""
-        num_dimensions = pytree_size(position)
 
         ss_state = da_init(initial_step_size)
 
@@ -105,6 +104,7 @@ def step_size_adaptation(
     initial_step_size: float = 1.0,
     target_acceptance_rate: float = 0.80,
     progress_bar: bool = False,
+    lower_bound: float = 1e-3,
     **extra_parameters,
 ) -> AdaptationAlgorithm:
     """Adapt the value of the step size parameters of
@@ -164,7 +164,12 @@ def step_size_adaptation(
         )
 
     def run(rng_key: PRNGKey, position: ArrayLikeTree, num_steps: int = 1000):
-        init_state = algorithm.init(position, logdensity_fn)
+        if algorithm == lmcmc.mmala.mmala:
+            init_state = algorithm.init(
+                position, logdensity_fn, extra_parameters["metric_fn"]
+            )
+        else:
+            init_state = algorithm.init(position, logdensity_fn)
         init_adaptation_state = adapt_init(position, initial_step_size)
 
         if progress_bar:
@@ -184,7 +189,7 @@ def step_size_adaptation(
 
         step_size = adapt_final(last_warmup_state)
         parameters = {
-            "step_size": step_size,
+            "step_size": jnp.maximum(step_size, lower_bound),
             # **extra_parameters,
         }
 
