@@ -57,6 +57,7 @@ class MALAInfo(NamedTuple):
 
     acceptance_rate: float
     is_accepted: bool
+    proposal: diffusions.DiffusionState
 
 
 def init(position: ArrayLikeTree, logdensity_fn: Callable) -> MALAState:
@@ -112,7 +113,7 @@ def build_kernel():
             key_rmh, proposal, new_proposal
         )
 
-        info = MALAInfo(p_accept, do_accept)
+        info = MALAInfo(p_accept, do_accept, new_proposal.state)
 
         return sampled_proposal.state, info
 

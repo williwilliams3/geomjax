@@ -46,6 +46,7 @@ class MMALAInfo(NamedTuple):
     acceptance_rate: float
     is_accepted: bool
     proposal: diffusions.DiffusionState
+    is_divergent: bool
 
 
 def init(
@@ -68,6 +69,7 @@ def build_kernel():
     information about the transition.
 
     """
+    divergence_threshold: float = 1000
 
     def transition_energy(state, new_state, step_size):
         """Transition energy to go from `state` to `new_state`"""
@@ -127,10 +129,11 @@ def build_kernel():
         new_proposal = generate_proposal(
             integrator_state, new_integrator_state, step_size=step_size
         )
+        is_diverging = -new_proposal.weight > divergence_threshold
         sampled_proposal, do_accept, p_accept = sample_proposal(
             key_rmh, proposal, new_proposal
         )
-        info = MMALAInfo(p_accept, do_accept, new_proposal.state)
+        info = MMALAInfo(p_accept, do_accept, new_proposal.state, is_diverging)
         return sampled_proposal.state, info
 
     return kernel
