@@ -47,6 +47,7 @@ class MMALAInfo(NamedTuple):
     is_accepted: bool
     proposal: diffusions.DiffusionState
     is_divergent: bool
+    weight: float
 
 
 def init(
@@ -133,7 +134,10 @@ def build_kernel():
         sampled_proposal, do_accept, p_accept = sample_proposal(
             key_rmh, proposal, new_proposal
         )
-        info = MMALAInfo(p_accept, do_accept, new_proposal.state, is_diverging)
+        info = MMALAInfo(
+            p_accept, do_accept, new_proposal.state, is_diverging, new_proposal.weight
+        )
+
         return sampled_proposal.state, info
 
     return kernel
