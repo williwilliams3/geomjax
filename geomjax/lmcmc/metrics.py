@@ -109,7 +109,7 @@ def gaussian_riemannian(
             metric = 0.5 * (metric + metric.T)
             _, logdetG = jnp.linalg.slogdet(metric)
             kinetic_energy_val = -0.5 * logdetG + 0.5 * jnp.dot(
-                metric @ velocity, velocity
+                jnp.matmul(metric, velocity), velocity
             )
         return kinetic_energy_val
 

@@ -135,9 +135,10 @@ def gaussian_euclidean(
 
         velocity_left = matmul(inverse_mass_matrix, m_left)
         velocity_right = matmul(inverse_mass_matrix, m_right)
+        v_sum = matmul(inverse_mass_matrix, m_sum)
 
-        # rho = m_sum
-        rho = m_sum - (m_right + m_left) / 2
+        rho = v_sum
+        # rho = m_sum - (m_right + m_left) / 2 # delayed rejection
         turning_at_left = jnp.dot(velocity_left, rho) <= 0
         turning_at_right = jnp.dot(velocity_right, rho) <= 0
         return turning_at_left | turning_at_right
