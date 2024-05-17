@@ -149,7 +149,9 @@ def build_kernel(
         momentum_generator, kinetic_energy_fn, _, inverse_metric_vector_product = (
             metrics.gaussian_euclidean(inverse_mass_matrix)
         )
-        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
+        symplectic_integrator = integrator(
+            logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
+        )
         proposal_generator = hmc_proposal(
             symplectic_integrator,
             kinetic_energy_fn,

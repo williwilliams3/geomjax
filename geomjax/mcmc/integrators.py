@@ -75,7 +75,7 @@ def velocity_verlet(
     kinetic_energy_grad_fn = jax.grad(kinetic_energy_fn)
 
     def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
-        position, momentum, _, logdensity_grad = state
+        position, momentum, _, _, logdensity_grad = state
 
         momentum = jax.tree_util.tree_map(
             lambda momentum, logdensity_grad: momentum

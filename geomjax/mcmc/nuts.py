@@ -126,7 +126,9 @@ def build_kernel(
             uturn_check_fn,
             inverse_metric_vector_product,
         ) = metrics.gaussian_euclidean(inverse_mass_matrix)
-        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
+        symplectic_integrator = integrator(
+            logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
+        )
         proposal_generator = iterative_nuts_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
