@@ -77,9 +77,9 @@ def gaussian_riemannian(
         momentum_left: ArrayLikeTree,
         momentum_right: ArrayLikeTree,
         momentum_sum: ArrayLikeTree,
-        velocity_left: Optional[ArrayLikeTree] = None,
-        velocity_right: Optional[ArrayLikeTree] = None,
-        velocity_sum: Optional[ArrayLikeTree] = None,
+        velocity_left: ArrayLikeTree,
+        velocity_right: ArrayLikeTree,
+        velocity_sum: ArrayLikeTree,
         criterion: str = "euc",
     ) -> bool:
         """Generalized U-turn criterion :cite:p:`betancourt2013generalizing,nuts_uturn`.

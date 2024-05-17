@@ -31,6 +31,7 @@ class IntegratorState(NamedTuple):
     """
 
     position: ArrayTree
+    momentum: ArrayTree
     velocity: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
@@ -95,6 +96,7 @@ def lan_integrator(
     ) -> IntegratorState:
         (
             position,
+            _,
             velocity,
             logdensity,
             logdensity_grad,
@@ -128,8 +130,11 @@ def lan_integrator(
             step_size,
         )
 
+        momentum = metric_vector_product(position=position, velocity=velocity)
+
         return IntegratorState(
             position,
+            momentum,
             velocity,
             logdensity,
             logdensity_grad,

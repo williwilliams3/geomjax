@@ -22,7 +22,8 @@ import geomjax.mcmc.termination as termination
 import geomjax.lmcmc.lmc as lmc
 import geomjax.lmcmc.integrators as integrators
 import geomjax.lmcmc.metrics as metrics
-import geomjax.lmcmc.trajectory as trajectory
+from geomjax.lmcmc.metrics import lmc_energy
+import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
@@ -130,9 +131,10 @@ def build_kernel(
         symplectic_integrator = integrator(
             logdensity_fn, omega_tilde_fn, grad_logdetmetric, metric_vector_product
         )
+        energy_fn = lmc_energy(kinetic_energy_fn)
         proposal_generator = iterative_nuts_proposal(
             symplectic_integrator,
-            kinetic_energy_fn,
+            energy_fn,
             uturn_check_fn,
             max_num_doublings,
             divergence_threshold,
@@ -142,9 +144,10 @@ def build_kernel(
 
         position, logdensity, logdensity_grad, volume_adjustment = state
         velocity = velocity_generator(key_velocity, position)
+        momentum = metric_vector_product(position=position, velocity=velocity)
 
         integrator_state = integrators.IntegratorState(
-            position, velocity, logdensity, logdensity_grad, volume_adjustment
+            position, momentum, velocity, logdensity, logdensity_grad, volume_adjustment
         )
         proposal, info = proposal_generator(key_integrator, integrator_state, step_size)
         proposal = lmc.LMCState(
@@ -247,7 +250,7 @@ class nuts:
 
 def iterative_nuts_proposal(
     integrator: Callable,
-    kinetic_energy: Callable,
+    energy_fn: Callable,
     uturn_check_fn: Callable,
     max_num_expansions: int = 10,
     divergence_threshold: float = 1000,
@@ -284,7 +287,7 @@ def iterative_nuts_proposal(
 
     trajectory_integrator = trajectory.dynamic_progressive_integration(
         integrator,
-        kinetic_energy,
+        energy_fn,
         update_termination_state,
         is_criterion_met,
         divergence_threshold,
@@ -296,25 +299,18 @@ def iterative_nuts_proposal(
         max_num_expansions,
     )
 
-    def _compute_energy(state: integrators.IntegratorState) -> float:
-        energy = (
-            -state.logdensity
-            + kinetic_energy(position=state.position, velocity=state.velocity)
-            - state.volume_adjustment
-        )
-        return energy
-
     def propose(rng_key, initial_state: integrators.IntegratorState, step_size):
         initial_termination_state = new_termination_state(
             initial_state, max_num_expansions
         )
-        initial_energy = _compute_energy(initial_state)  # H0 of the LMC step
+        initial_energy = energy_fn(initial_state)  # H0 of the LMC step
         initial_proposal = proposal.Proposal(
             initial_state, initial_energy, 0.0, -np.inf
         )
         initial_trajectory = trajectory.Trajectory(
             initial_state,
             initial_state,
+            initial_state.momentum,
             initial_state.velocity,
             0,
         )

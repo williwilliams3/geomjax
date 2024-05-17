@@ -19,9 +19,9 @@ import jax
 import geomjax.mcmc.proposal as proposal
 import geomjax.lmcmc.integrators as integrators
 import geomjax.lmcmc.metrics as metrics
-import geomjax.lmcmc.trajectory as trajectory
+import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.lmcmc.trajectory import lmc_energy
+from geomjax.lmcmc.metrics import lmc_energy
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
 
 __all__ = ["LMCState", "LMCInfo", "init", "build_kernel", "lmc"]
@@ -165,9 +165,9 @@ def build_kernel(
 
         position, logdensity, logdensity_grad, volume_adjustment = state
         velocity = velocity_generator(key_velocity, position)
-
+        momentum = metric_vector_product(position=position, velocity=velocity)
         integrator_state = integrators.IntegratorState(
-            position, velocity, logdensity, logdensity_grad, volume_adjustment
+            position, momentum, velocity, logdensity, logdensity_grad, volume_adjustment
         )
         proposal, info = proposal_generator(key_integrator, integrator_state)
         proposal = LMCState(
@@ -486,9 +486,12 @@ def flip_velocity(
     should indeed retrieve the initial state (with flipped velocity).
 
     """
+    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
     flipped_velocity = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
+
     return integrators.IntegratorState(
         state.position,
+        flipped_momentum,
         flipped_velocity,
         state.logdensity,
         state.logdensity_grad,
