@@ -26,7 +26,7 @@ For a Newtonian hamiltonian dynamic the kinetic energy is given by:
 
 
 """
-from typing import Callable
+from typing import Callable, Optional
 import jax.numpy as jnp
 import jax.scipy as jscipy
 import jax.scipy.stats as jss
@@ -74,9 +74,13 @@ def gaussian_riemannian(
             )
 
     def is_turning(
-        velocity_left: ArrayLikeTree,
-        velocity_right: ArrayLikeTree,
-        velocity_sum: ArrayLikeTree,
+        momentum_left: ArrayLikeTree,
+        momentum_right: ArrayLikeTree,
+        momentum_sum: ArrayLikeTree,
+        velocity_left: Optional[ArrayLikeTree] = None,
+        velocity_right: Optional[ArrayLikeTree] = None,
+        velocity_sum: Optional[ArrayLikeTree] = None,
+        criterion: str = "euc",
     ) -> bool:
         """Generalized U-turn criterion :cite:p:`betancourt2013generalizing,nuts_uturn`.
 
@@ -90,14 +94,27 @@ def gaussian_riemannian(
             Sum of the momenta along the trajectory.
 
         """
-        velocity_left, _ = ravel_pytree(velocity_left)
-        velocity_right, _ = ravel_pytree(velocity_right)
-        velocity_sum, _ = ravel_pytree(velocity_sum)
+        m_left, _ = ravel_pytree(momentum_left)
+        m_right, _ = ravel_pytree(momentum_right)
+        m_sum, _ = ravel_pytree(momentum_sum)
+        v_left, _ = ravel_pytree(velocity_left)
+        v_right, _ = ravel_pytree(velocity_right)
+        v_sum, _ = ravel_pytree(velocity_sum)
 
-        rho = velocity_sum
-        # rho = velocity_sum - (velocity_right + velocity_left) / 2
-        turning_at_left = jnp.dot(velocity_left, rho) <= 0
-        turning_at_right = jnp.dot(velocity_right, rho) <= 0
+        # rho = m_sum - (m_right + m_left) / 2
+        if criterion == "euc":
+            rho = v_sum
+            turning_at_left = jnp.dot(v_left, rho) <= 0
+            turning_at_right = jnp.dot(v_right, rho) <= 0
+        elif criterion == "bet":
+            rho = m_sum
+            turning_at_left = jnp.dot(v_left, rho) <= 0
+            turning_at_right = jnp.dot(v_right, rho) <= 0
+        elif criterion == "riem":
+            rho = v_sum
+            turning_at_left = jnp.dot(m_left, rho) <= 0
+            turning_at_right = jnp.dot(m_right, rho) <= 0
+
         return turning_at_left | turning_at_right
 
     def inverse_metric_vector_product(position: ArrayLikeTree, momentum: ArrayLikeTree):

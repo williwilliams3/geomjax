@@ -27,7 +27,7 @@ For a Newtonian hamiltonian dynamic the kinetic energy is given by:
 We can also generate a relativistic dynamic :cite:p:`lu2017relativistic`.
 
 """
-from typing import Callable
+from typing import Callable, Optional
 
 import jax.numpy as jnp
 import jax.scipy as jscipy
@@ -106,7 +106,10 @@ def gaussian_euclidean(
     def momentum_generator(rng_key: PRNGKey, position: ArrayLikeTree) -> ArrayTree:
         return generate_gaussian_noise(rng_key, position, sigma=mass_matrix_sqrt)
 
-    def kinetic_energy(momentum: ArrayLikeTree) -> float:
+    def kinetic_energy(
+        momentum: ArrayLikeTree, position: Optional[ArrayLikeTree] = None
+    ) -> float:
+        del position
         momentum, _ = ravel_pytree(momentum)
         velocity = matmul(inverse_mass_matrix, momentum)
         kinetic_energy_val = 0.5 * jnp.dot(velocity, momentum)
@@ -116,6 +119,9 @@ def gaussian_euclidean(
         momentum_left: ArrayLikeTree,
         momentum_right: ArrayLikeTree,
         momentum_sum: ArrayLikeTree,
+        velocity_left: ArrayLikeTree,
+        velocity_right: ArrayLikeTree,
+        velocity_sum: ArrayLikeTree,
     ) -> bool:
         """Generalized U-turn criterion :cite:p:`betancourt2013generalizing,nuts_uturn`.
 
@@ -132,15 +138,20 @@ def gaussian_euclidean(
         m_left, _ = ravel_pytree(momentum_left)
         m_right, _ = ravel_pytree(momentum_right)
         m_sum, _ = ravel_pytree(momentum_sum)
+        v_left, _ = ravel_pytree(velocity_left)
+        v_right, _ = ravel_pytree(velocity_right)
+        v_sum, _ = ravel_pytree(velocity_sum)
 
-        velocity_left = matmul(inverse_mass_matrix, m_left)
-        velocity_right = matmul(inverse_mass_matrix, m_right)
-        v_sum = matmul(inverse_mass_matrix, m_sum)
-
-        rho = v_sum
+        rho = m_sum
         # rho = m_sum - (m_right + m_left) / 2 # delayed rejection
-        turning_at_left = jnp.dot(velocity_left, rho) <= 0
-        turning_at_right = jnp.dot(velocity_right, rho) <= 0
+        turning_at_left = jnp.dot(v_left, rho) <= 0
+        turning_at_right = jnp.dot(v_right, rho) <= 0
         return turning_at_left | turning_at_right
 
-    return momentum_generator, kinetic_energy, is_turning
+    def inverse_metric_vector_product(
+        momentum: ArrayLikeTree, position: Optional[ArrayLikeTree] = None
+    ) -> ArrayLikeTree:
+
+        return matmul(inverse_mass_matrix, momentum)
+
+    return momentum_generator, kinetic_energy, is_turning, inverse_metric_vector_product

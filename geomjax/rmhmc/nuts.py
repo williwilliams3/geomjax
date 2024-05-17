@@ -22,7 +22,7 @@ import geomjax.mcmc.termination as termination
 import geomjax.rmhmc.rmhmc as rmhmc
 import geomjax.rmhmc.integrators as integrators
 import geomjax.rmhmc.metrics as metrics
-import geomjax.rmhmc.trajectory as trajectory
+import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
@@ -125,7 +125,9 @@ def build_kernel(
             uturn_check_fn,
             inverse_metric_vector_product,
         ) = metrics.gaussian_riemannian(metric_fn)
-        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn, metric_fn)
+        symplectic_integrator = integrator(
+            logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
+        )
         proposal_generator = iterative_nuts_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
@@ -310,6 +312,7 @@ def iterative_nuts_proposal(
             initial_state,
             initial_state,
             initial_state.momentum,
+            initial_state.velocity,
             0,
         )
         initial_expansion_state = trajectory.DynamicExpansionState(

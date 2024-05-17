@@ -13,16 +13,16 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 from typing import NamedTuple
-
 import jax
 import jax.numpy as jnp
-
 from geomjax.types import Array
 
 
 class IterativeUTurnState(NamedTuple):
     momentum: Array
     momentum_sum: Array
+    velocity: Array
+    velocity_sum: Array
     idx_min: int
     idx_max: int
 
@@ -36,6 +36,8 @@ def iterative_uturn_numpyro(is_turning):
         return IterativeUTurnState(
             jnp.zeros((max_num_doublings, num_dims)),
             jnp.zeros((max_num_doublings, num_dims)),
+            jnp.zeros((max_num_doublings, num_dims)),
+            jnp.zeros((max_num_doublings, num_dims)),
             0,
             0,
         )
@@ -44,20 +46,31 @@ def iterative_uturn_numpyro(is_turning):
         checkpoints: IterativeUTurnState,
         momentum_sum,
         momentum,
+        velocity_sum,
+        velocity,
         step: int,
     ):
-        r_ckpts, r_sum_ckpts, _, _ = checkpoints
+        r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts, _, _ = checkpoints
         ckpt_idx_min, ckpt_idx_max = _leaf_idx_to_ckpt_idxs(step)
         r, _ = jax.flatten_util.ravel_pytree(momentum)
         r_sum, _ = jax.flatten_util.ravel_pytree(momentum_sum)
-        r_ckpts, r_sum_ckpts = jax.lax.cond(
+        v, _ = jax.flatten_util.ravel_pytree(velocity)
+        v_sum, _ = jax.flatten_util.ravel_pytree(velocity_sum)
+        r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts = jax.lax.cond(
             step % 2 == 0,
-            (r_ckpts, r_sum_ckpts),
-            lambda x: (x[0].at[ckpt_idx_max].set(r), x[1].at[ckpt_idx_max].set(r_sum)),
-            (r_ckpts, r_sum_ckpts),
+            (r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts),
+            lambda x: (
+                x[0].at[ckpt_idx_max].set(r),
+                x[1].at[ckpt_idx_max].set(r_sum),
+                x[2].at[ckpt_idx_max].set(v),
+                x[3].at[ckpt_idx_max].set(v_sum),
+            ),
+            (r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts),
             lambda x: x,
         )
-        return IterativeUTurnState(r_ckpts, r_sum_ckpts, ckpt_idx_min, ckpt_idx_max)
+        return IterativeUTurnState(
+            r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts, ckpt_idx_min, ckpt_idx_max
+        )
 
     def _leaf_idx_to_ckpt_idxs(n):
         """Find the checkpoint id from a step number."""
@@ -76,7 +89,9 @@ def iterative_uturn_numpyro(is_turning):
         idx_min = idx_max - num_subtrees + 1
         return idx_min, idx_max
 
-    def _is_iterative_turning(checkpoints, momentum_sum, momentum):
+    def _is_iterative_turning(
+        checkpoints, momentum_sum, momentum, velocity_sum, velocity
+    ):
         """Checks whether there is a U-turn in the iteratively built expanded trajectory.
 
         These checks only need to be performed as specific points.
@@ -84,12 +99,17 @@ def iterative_uturn_numpyro(is_turning):
         """
         r, _ = jax.flatten_util.ravel_pytree(momentum)
         r_sum, _ = jax.flatten_util.ravel_pytree(momentum_sum)
-        r_ckpts, r_sum_ckpts, idx_min, idx_max = checkpoints
+        v, _ = jax.flatten_util.ravel_pytree(velocity)
+        v_sum, _ = jax.flatten_util.ravel_pytree(velocity_sum)
+        r_ckpts, r_sum_ckpts, v_ckpts, v_sum_ckpts, idx_min, idx_max = checkpoints
 
         def _body_fn(state):
             i, _ = state
             subtree_r_sum = r_sum - r_sum_ckpts[i] + r_ckpts[i]
-            return i - 1, is_turning(r_ckpts[i], r, subtree_r_sum)
+            subtree_v_sum = v_sum - v_sum_ckpts[i] + v_ckpts[i]
+            return i - 1, is_turning(
+                r_ckpts[i], r, subtree_r_sum, v_ckpts[i], v, subtree_v_sum
+            )
 
         _, turning = jax.lax.while_loop(
             lambda it: (it[0] >= idx_min) & ~it[1], _body_fn, (idx_max, False)

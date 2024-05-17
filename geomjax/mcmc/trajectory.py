@@ -55,6 +55,7 @@ class Trajectory(NamedTuple):
     leftmost_state: IntegratorState
     rightmost_state: IntegratorState
     momentum_sum: ArrayTree
+    velocity_sum: ArrayTree
     num_states: int
 
 
@@ -63,8 +64,15 @@ def append_to_trajectory(trajectory: Trajectory, state: IntegratorState) -> Traj
     momentum_sum = jax.tree_util.tree_map(
         jnp.add, trajectory.momentum_sum, state.momentum
     )
+    velocity_sum = jax.tree_util.tree_map(
+        jnp.add, trajectory.velocity_sum, state.velocity
+    )
     return Trajectory(
-        trajectory.leftmost_state, state, momentum_sum, trajectory.num_states + 1
+        trajectory.leftmost_state,
+        state,
+        momentum_sum,
+        velocity_sum,
+        trajectory.num_states + 1,
     )
 
 
@@ -90,10 +98,14 @@ def merge_trajectories(left_trajectory: Trajectory, right_trajectory: Trajectory
     momentum_sum = jax.tree_util.tree_map(
         jnp.add, left_trajectory.momentum_sum, right_trajectory.momentum_sum
     )
+    velocity_sum = jax.tree_util.tree_map(
+        jnp.add, left_trajectory.velocity_sum, right_trajectory.velocity_sum
+    )
     return Trajectory(
         left_trajectory.leftmost_state,
         right_trajectory.rightmost_state,
         momentum_sum,
+        velocity_sum,
         left_trajectory.num_states + right_trajectory.num_states,
     )
 
@@ -221,7 +233,9 @@ def dynamic_progressive_integration(
             (new_trajectory, sampled_proposal) = jax.lax.cond(
                 step == 0,
                 lambda _: (
-                    Trajectory(new_state, new_state, new_state.momentum, 1),
+                    Trajectory(
+                        new_state, new_state, new_state.momentum, new_state.velocity, 1
+                    ),
                     new_proposal,
                 ),
                 lambda _: (
@@ -232,10 +246,19 @@ def dynamic_progressive_integration(
             )
 
             new_termination_state = update_termination_state(
-                termination_state, new_trajectory.momentum_sum, new_state.momentum, step
+                termination_state,
+                new_trajectory.momentum_sum,
+                new_state.momentum,
+                new_trajectory.velocity_sum,
+                new_state.velocity,
+                step,
             )
             has_terminated = is_criterion_met(
-                new_termination_state, new_trajectory.momentum_sum, new_state.momentum
+                new_termination_state,
+                new_trajectory.momentum_sum,
+                new_state.momentum,
+                new_trajectory.velocity_sum,
+                new_state.velocity,
             )
 
             new_integration_state = DynamicIntegrationState(
@@ -249,7 +272,11 @@ def dynamic_progressive_integration(
 
         proposal_placeholder = generate_proposal(initial_energy, initial_state)
         trajectory_placeholder = Trajectory(
-            initial_state, initial_state, initial_state.momentum, 0
+            initial_state,
+            initial_state,
+            initial_state.momentum,
+            initial_state.velocity,
+            0,
         )
         integration_state_placeholder = DynamicIntegrationState(
             0,
@@ -273,6 +300,7 @@ def dynamic_progressive_integration(
                 trajectory.rightmost_state,
                 trajectory.leftmost_state,
                 trajectory.momentum_sum,
+                trajectory.velocity_sum,
                 trajectory.num_states,
             ),
             operand=None,
@@ -356,7 +384,9 @@ def dynamic_recursive_integration(
             next_state = integrator(initial_state, direction * step_size)
             new_proposal = generate_proposal(initial_energy, next_state)
             is_diverging = -new_proposal.weight > divergence_threshold
-            trajectory = Trajectory(next_state, next_state, next_state.momentum, 1)
+            trajectory = Trajectory(
+                next_state, next_state, next_state.momentum, next_state.velocity, 1
+            )
             return (
                 rng_key,
                 new_proposal,
@@ -411,6 +441,9 @@ def dynamic_recursive_integration(
                         trajectory.leftmost_state.momentum,
                         trajectory.rightmost_state.momentum,
                         trajectory.momentum_sum,
+                        trajectory.leftmost_state.velocity,
+                        trajectory.rightmost_state.velocity,
+                        trajectory.velocity_sum,
                     )
                     if use_robust_uturn_check & (tree_depth - 1 > 0):
                         momentum_sum_left = jax.tree_util.tree_map(
@@ -418,20 +451,36 @@ def dynamic_recursive_integration(
                             left_trajectory.momentum_sum,
                             right_trajectory.leftmost_state.momentum,
                         )
+                        velocity_sum_left = jax.tree_util.tree_map(
+                            jnp.add,
+                            left_trajectory.velocity_sum,
+                            right_trajectory.leftmost_state.velocity,
+                        )
                         is_turning_left = uturn_check_fn(
                             left_trajectory.leftmost_state.momentum,
                             right_trajectory.leftmost_state.momentum,
                             momentum_sum_left,
+                            left_trajectory.leftmost_state.velocity,
+                            right_trajectory.leftmost_state.velocity,
+                            velocity_sum_left,
                         )
                         momentum_sum_right = jax.tree_util.tree_map(
                             jnp.add,
                             left_trajectory.rightmost_state.momentum,
                             right_trajectory.momentum_sum,
                         )
+                        velocity_sum_right = jax.tree_util.tree_map(
+                            jnp.add,
+                            left_trajectory.rightmost_state.velocity,
+                            right_trajectory.velocity_sum,
+                        )
                         is_turning_right = uturn_check_fn(
                             left_trajectory.rightmost_state.momentum,
                             right_trajectory.rightmost_state.momentum,
                             momentum_sum_right,
+                            left_trajectory.rightmost_state.velocity,
+                            right_trajectory.rightmost_state.velocity,
+                            velocity_sum_right,
                         )
                         is_turning = is_turning | is_turning_left | is_turning_right
                 rng_key, proposal_key = jax.random.split(rng_key)
@@ -596,6 +645,9 @@ def dynamic_multiplicative_expansion(
                 merged_trajectory.leftmost_state.momentum,
                 merged_trajectory.rightmost_state.momentum,
                 merged_trajectory.momentum_sum,
+                merged_trajectory.leftmost_state.velocity,
+                merged_trajectory.rightmost_state.velocity,
+                merged_trajectory.velocity_sum,
             )
 
             new_state = DynamicExpansionState(
@@ -618,6 +670,8 @@ def dynamic_multiplicative_expansion(
 
 def hmc_energy(kinetic_energy):
     def energy(state):
-        return -state.logdensity + kinetic_energy(state.momentum)
+        return -state.logdensity + kinetic_energy(
+            position=state.position, momentum=state.momentum
+        )
 
     return energy

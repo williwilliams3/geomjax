@@ -19,9 +19,9 @@ import jax
 import geomjax.mcmc.proposal as proposal
 import geomjax.rmhmc.integrators as integrators
 import geomjax.rmhmc.metrics as metrics
-import geomjax.rmhmc.trajectory as trajectory
+import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.rmhmc.trajectory import rmhmc_energy
+from geomjax.mcmc.trajectory import hmc_energy
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = ["init", "build_kernel", "rmhmc"]
@@ -121,7 +121,9 @@ def build_kernel(
             _,
             inverse_metric_vector_product,
         ) = metrics.gaussian_riemannian(metric_fn)
-        symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn, metric_fn)
+        symplectic_integrator = integrator(
+            logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
+        )
         proposal_generator = rmhmc_proposal(
             symplectic_integrator,
             kinetic_energy_fn,
@@ -255,7 +257,7 @@ def rmhmc_proposal(
     """
     build_trajectory = trajectory.static_integration(integrator)
     init_proposal, generate_proposal = proposal.proposal_generator(
-        rmhmc_energy(kinetic_energy)
+        hmc_energy(kinetic_energy)
     )
 
     def generate(

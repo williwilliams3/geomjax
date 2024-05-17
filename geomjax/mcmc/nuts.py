@@ -124,6 +124,7 @@ def build_kernel(
             momentum_generator,
             kinetic_energy_fn,
             uturn_check_fn,
+            inverse_metric_vector_product,
         ) = metrics.gaussian_euclidean(inverse_mass_matrix)
         symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
         proposal_generator = iterative_nuts_proposal(
@@ -138,9 +139,9 @@ def build_kernel(
 
         position, logdensity, logdensity_grad = state
         momentum = momentum_generator(key_momentum, position)
-
+        velocity = inverse_metric_vector_product(momentum)
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, momentum, velocity, logdensity, logdensity_grad
         )
         proposal, info = proposal_generator(key_integrator, integrator_state, step_size)
         proposal = hmc.HMCState(
@@ -305,6 +306,7 @@ def iterative_nuts_proposal(
             initial_state,
             initial_state,
             initial_state.momentum,
+            initial_state.velocity,
             0,
         )
         initial_expansion_state = trajectory.DynamicExpansionState(

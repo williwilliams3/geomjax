@@ -146,8 +146,8 @@ def build_kernel(
     ) -> tuple[HMCState, HMCInfo]:
         """Generate a new sample with the HMC kernel."""
 
-        momentum_generator, kinetic_energy_fn, _ = metrics.gaussian_euclidean(
-            inverse_mass_matrix
+        momentum_generator, kinetic_energy_fn, _, inverse_metric_vector_product = (
+            metrics.gaussian_euclidean(inverse_mass_matrix)
         )
         symplectic_integrator = integrator(logdensity_fn, kinetic_energy_fn)
         proposal_generator = hmc_proposal(
@@ -162,9 +162,9 @@ def build_kernel(
 
         position, logdensity, logdensity_grad = state
         momentum = momentum_generator(key_momentum, position)
-
+        velocity = inverse_metric_vector_product(momentum)
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, momentum, velocity, logdensity, logdensity_grad
         )
         proposal, info = proposal_generator(key_integrator, integrator_state)
         proposal = HMCState(
@@ -476,9 +476,11 @@ def flip_momentum(
 
     """
     flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
+    flipped_velocity = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
     return integrators.IntegratorState(
         state.position,
         flipped_momentum,
+        flipped_velocity,
         state.logdensity,
         state.logdensity_grad,
     )

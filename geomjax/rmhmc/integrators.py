@@ -93,7 +93,7 @@ def solve_fixed_point_iteration(
 def implicit_midpoint(
     logdensity_fn: Callable,
     kinetic_energy_fn: Callable,
-    metric_fn: Callable,
+    inverse_metric_vector_product: Callable,
     *,
     solver: FixedPointSolver = solve_fixed_point_iteration,
     **solver_kwargs: any,
@@ -111,9 +111,6 @@ def implicit_midpoint(
     logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
     kinetic_energy_grad_fn = jax.grad(
         lambda q, p: kinetic_energy_fn(momentum=p, position=q), argnums=(0, 1)
-    )
-    _, _, _, inverse_metric_vector_product = metrics.gaussian_riemannian(
-        metric_fn=metric_fn
     )
 
     def one_step(state: IntegratorState, step_size: float) -> IntegratorState:

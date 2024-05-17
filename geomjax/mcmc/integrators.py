@@ -31,6 +31,7 @@ class IntegratorState(NamedTuple):
 
     position: ArrayTree
     momentum: ArrayTree
+    velocity: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
 
@@ -38,14 +39,15 @@ class IntegratorState(NamedTuple):
 EuclideanIntegrator = Callable[[IntegratorState, float], IntegratorState]
 
 
-def new_integrator_state(logdensity_fn, position, momentum):
+def new_integrator_state(logdensity_fn, position, momentum, velocity):
     logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
-    return IntegratorState(position, momentum, logdensity, logdensity_grad)
+    return IntegratorState(position, momentum, velocity, logdensity, logdensity_grad)
 
 
 def velocity_verlet(
     logdensity_fn: Callable,
     kinetic_energy_fn: EuclideanKineticEnergy,
+    inverse_metric_vector_product: Callable,
 ) -> EuclideanIntegrator:
     """The velocity Verlet (or Verlet-Störmer) integrator.
 
@@ -96,153 +98,10 @@ def velocity_verlet(
             momentum,
             logdensity_grad,
         )
+        velocity = inverse_metric_vector_product(momentum=momentum)
 
-        return IntegratorState(position, momentum, logdensity, logdensity_grad)
-
-    return one_step
-
-
-def mclachlan(
-    logdensity_fn: Callable,
-    kinetic_energy_fn: Callable,
-) -> EuclideanIntegrator:
-    """Two-stage palindromic symplectic integrator derived in :cite:p:`blanes2014numerical`.
-
-    The integrator is of the form (b1, a1, b2, a1, b1). The choice of the parameters
-    determine both the bound on the integration error and the stability of the
-    method with respect to the value of `step_size`. The values used here are
-    the ones derived in :cite:p:`mclachlan1995numerical`; note that :cite:p:`blanes2014numerical` is more focused on stability
-    and derives different values.
-
-    """
-    b1 = 0.1932
-    a1 = 0.5
-    b2 = 1 - 2 * b1
-
-    logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
-    kinetic_energy_grad_fn = jax.grad(kinetic_energy_fn)
-
-    def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
-        position, momentum, _, logdensity_grad = state
-
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b1 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
+        return IntegratorState(
+            position, momentum, velocity, logdensity, logdensity_grad
         )
-
-        kinetic_grad = kinetic_energy_grad_fn(momentum)
-        position = jax.tree_util.tree_map(
-            lambda position, kinetic_grad: position + a1 * step_size * kinetic_grad,
-            position,
-            kinetic_grad,
-        )
-
-        _, logdensity_grad = logdensity_and_grad_fn(position)
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b2 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        kinetic_grad = kinetic_energy_grad_fn(momentum)
-        position = jax.tree_util.tree_map(
-            lambda position, kinetic_grad: position + a1 * step_size * kinetic_grad,
-            position,
-            kinetic_grad,
-        )
-
-        logdensity, logdensity_grad = logdensity_and_grad_fn(position)
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b1 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        return IntegratorState(position, momentum, logdensity, logdensity_grad)
-
-    return one_step
-
-
-def yoshida(
-    logdensity_fn: Callable,
-    kinetic_energy_fn: Callable,
-) -> EuclideanIntegrator:
-    """Three stages palindromic symplectic integrator derived in :cite:p:`mclachlan1995numerical`
-
-    The integrator is of the form (b1, a1, b2, a2, b2, a1, b1). The choice of
-    the parameters determine both the bound on the integration error and the
-    stability of the method with respect to the value of `step_size`. The
-    values used here are the ones derived in :cite:p:`mclachlan1995numerical` which guarantees a stability
-    interval length approximately equal to 4.67.
-
-    """
-    b1 = 0.11888010966548
-    a1 = 0.29619504261126
-    b2 = 0.5 - b1
-    a2 = 1 - 2 * a1
-
-    logdensity_and_grad_fn = jax.value_and_grad(logdensity_fn)
-    kinetic_energy_grad_fn = jax.grad(kinetic_energy_fn)
-
-    def one_step(state: IntegratorState, step_size: float) -> IntegratorState:
-        position, momentum, _, logdensity_grad = state
-
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b1 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        kinetic_grad = kinetic_energy_grad_fn(momentum)
-        position = jax.tree_util.tree_map(
-            lambda position, kinetic_grad: position + a1 * step_size * kinetic_grad,
-            position,
-            kinetic_grad,
-        )
-
-        _, logdensity_grad = logdensity_and_grad_fn(position)
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b2 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        kinetic_grad = kinetic_energy_grad_fn(momentum)
-        position = jax.tree_util.tree_map(
-            lambda position, kinetic_grad: position + a2 * step_size * kinetic_grad,
-            position,
-            kinetic_grad,
-        )
-
-        _, logdensity_grad = logdensity_and_grad_fn(position)
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b2 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        kinetic_grad = kinetic_energy_grad_fn(momentum)
-        position = jax.tree_util.tree_map(
-            lambda position, kinetic_grad: position + a1 * step_size * kinetic_grad,
-            position,
-            kinetic_grad,
-        )
-
-        logdensity, logdensity_grad = logdensity_and_grad_fn(position)
-        momentum = jax.tree_util.tree_map(
-            lambda momentum, logdensity_grad: momentum
-            + b1 * step_size * logdensity_grad,
-            momentum,
-            logdensity_grad,
-        )
-
-        return IntegratorState(position, momentum, logdensity, logdensity_grad)
 
     return one_step
