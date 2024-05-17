@@ -21,7 +21,7 @@ import geomjax.rmhmc.integrators as integrators
 import geomjax.rmhmc.metrics as metrics
 import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.mcmc.trajectory import hmc_energy
+from geomjax.mcmc.metrics import hmc_energy
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = ["init", "build_kernel", "rmhmc"]

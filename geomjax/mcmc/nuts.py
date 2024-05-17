@@ -21,6 +21,7 @@ import numpy as np
 import geomjax.mcmc.hmc as hmc
 import geomjax.mcmc.integrators as integrators
 import geomjax.mcmc.metrics as metrics
+from geomjax.mcmc.metrics import hmc_energy
 import geomjax.mcmc.proposal as proposal
 import geomjax.mcmc.termination as termination
 import geomjax.mcmc.trajectory as trajectory
@@ -129,9 +130,10 @@ def build_kernel(
         symplectic_integrator = integrator(
             logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
         )
+        energy_fn = hmc_energy(kinetic_energy_fn)
         proposal_generator = iterative_nuts_proposal(
             symplectic_integrator,
-            kinetic_energy_fn,
+            energy_fn,
             uturn_check_fn,
             max_num_doublings,
             divergence_threshold,
@@ -243,7 +245,7 @@ class nuts:
 
 def iterative_nuts_proposal(
     integrator: Callable,
-    kinetic_energy: Callable,
+    energy_fn: Callable,
     uturn_check_fn: Callable,
     max_num_expansions: int = 10,
     divergence_threshold: float = 1000,
@@ -280,7 +282,7 @@ def iterative_nuts_proposal(
 
     trajectory_integrator = trajectory.dynamic_progressive_integration(
         integrator,
-        kinetic_energy,
+        energy_fn,
         update_termination_state,
         is_criterion_met,
         divergence_threshold,
@@ -292,15 +294,11 @@ def iterative_nuts_proposal(
         max_num_expansions,
     )
 
-    def _compute_energy(state: integrators.IntegratorState) -> float:
-        energy = -state.logdensity + kinetic_energy(state.momentum)
-        return energy
-
     def propose(rng_key, initial_state: integrators.IntegratorState, step_size):
         initial_termination_state = new_termination_state(
             initial_state, max_num_expansions
         )
-        initial_energy = _compute_energy(initial_state)  # H0 of the HMC step
+        initial_energy = energy_fn(initial_state)  # H0 of the HMC step
         initial_proposal = proposal.Proposal(
             initial_state, initial_energy, 0.0, -np.inf
         )

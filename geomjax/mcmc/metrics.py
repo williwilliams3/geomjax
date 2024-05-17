@@ -155,3 +155,12 @@ def gaussian_euclidean(
         return matmul(inverse_mass_matrix, momentum)
 
     return momentum_generator, kinetic_energy, is_turning, inverse_metric_vector_product
+
+
+def hmc_energy(kinetic_energy):
+    def energy(state):
+        return -state.logdensity + kinetic_energy(
+            position=state.position, momentum=state.momentum
+        )
+
+    return energy

@@ -148,7 +148,7 @@ class DynamicIntegrationState(NamedTuple):
 
 def dynamic_progressive_integration(
     integrator: Callable,
-    kinetic_energy: Callable,
+    energy_fn: Callable,
     update_termination_state: Callable,
     is_criterion_met: Callable,
     divergence_threshold: float,
@@ -171,7 +171,7 @@ def dynamic_progressive_integration(
         which we say a transition is divergent.
 
     """
-    _, generate_proposal = proposal_generator(hmc_energy(kinetic_energy))
+    _, generate_proposal = proposal_generator(energy_fn)
     sample_proposal = progressive_uniform_sampling
 
     def integrate(
@@ -319,7 +319,7 @@ def dynamic_progressive_integration(
 
 def dynamic_recursive_integration(
     integrator: Callable,
-    kinetic_energy: Callable,
+    energy_fn: Callable,
     uturn_check_fn: Callable,
     divergence_threshold: float,
     use_robust_uturn_check: bool = False,
@@ -346,7 +346,7 @@ def dynamic_recursive_integration(
         Bool to indicate whether to perform additional U turn check between two trajectory.
 
     """
-    _, generate_proposal = proposal_generator(hmc_energy(kinetic_energy))
+    _, generate_proposal = proposal_generator(energy_fn)
     sample_proposal = progressive_uniform_sampling
 
     def buildtree_integrate(
@@ -666,12 +666,3 @@ def dynamic_multiplicative_expansion(
         return expansion_state, (is_diverging, is_turning)
 
     return expand
-
-
-def hmc_energy(kinetic_energy):
-    def energy(state):
-        return -state.logdensity + kinetic_energy(
-            position=state.position, momentum=state.momentum
-        )
-
-    return energy

@@ -21,7 +21,7 @@ import geomjax.mcmc.metrics as metrics
 import geomjax.mcmc.proposal as proposal
 import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
-from geomjax.mcmc.trajectory import hmc_energy
+from geomjax.mcmc.metrics import hmc_energy
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = [
