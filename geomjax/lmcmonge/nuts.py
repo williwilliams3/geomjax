@@ -23,7 +23,8 @@ import geomjax.lmcmonge.integrators as integrators
 import geomjax.lmcmonge.metrics as metrics
 import geomjax.mcmc.proposal as proposal
 import geomjax.mcmc.termination as termination
-import geomjax.lmcmonge.trajectory as trajectory
+from geomjax.lmcmonge.metrics import lmcmonge_energy
+import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import hvp
@@ -139,6 +140,7 @@ def build_kernel(
             set_weighted_gradient,
             normalizing_constant,
             uturn_check_fn,
+            metric_vector_product,
         ) = metrics.gaussian_riemannian(alpha2, inverse_mass_matrix)
         determinant_metric = normalizing_constant(alpha2, logdensity_grad)
         sqrt_determinant_metric = jnp.sqrt(determinant_metric)
@@ -146,12 +148,15 @@ def build_kernel(
         logdensity_grad_norm = logdensity_grad / sqrt_determinant_metric
 
         symplectic_integrator = integrator(
-            logdensity_fn, set_weighted_gradient, normalizing_constant
+            logdensity_fn,
+            set_weighted_gradient,
+            normalizing_constant,
+            metric_vector_product,
         )
-
+        energy_fn = lmcmonge_energy(kinetic_energy_fn)
         proposal_generator = iterative_nuts_proposal(
             symplectic_integrator,
-            kinetic_energy_fn,
+            energy_fn,
             uturn_check_fn,
             max_num_doublings,
             divergence_threshold,
@@ -163,6 +168,9 @@ def build_kernel(
         Hdl_ig = hvp(logdensity_fn, position, dl_ig) / sqrt_determinant_metric
         ig_Hdl_ig = set_weighted_gradient(Hdl_ig)
         velocity = velocity_generator(key_velocity, position, alpha2, dl_ig)
+        momentum = metric_vector_product(
+            velocity, alpha2, logdensity_grad, determinant_metric
+        )
         # Compute normalized Hvp velocity
         logdensity_hvp_velocity_norm = (
             hvp(logdensity_fn, position, velocity) / sqrt_determinant_metric
@@ -171,6 +179,7 @@ def build_kernel(
         integrator_state = integrators.RiemannianIntegratorState(
             alpha2,
             position,
+            momentum,
             velocity,
             logdensity,
             logdensity_grad_norm,
@@ -285,7 +294,7 @@ class nutslmc:
 
 def iterative_nuts_proposal(
     integrator: Callable,
-    kinetic_energy: Callable,
+    energy_fn: Callable,
     uturn_check_fn: Callable,
     max_num_expansions: int = 10,
     divergence_threshold: float = 1000,
@@ -322,7 +331,7 @@ def iterative_nuts_proposal(
 
     trajectory_integrator = trajectory.dynamic_progressive_integration(
         integrator,
-        kinetic_energy,
+        energy_fn,
         update_termination_state,
         is_criterion_met,
         divergence_threshold,
@@ -334,32 +343,20 @@ def iterative_nuts_proposal(
         max_num_expansions,
     )
 
-    def _compute_energy(state: integrators.RiemannianIntegratorState) -> float:
-        energy = (
-            -state.logdensity
-            + kinetic_energy(
-                state.velocity,
-                state.alpha2,
-                state.logdensity_grad_norm,
-                state.determinant_metric,
-            )
-            - state.volume_adjustment
-        )
-        return energy
-
     def propose(
         rng_key, initial_state: integrators.RiemannianIntegratorState, step_size
     ):
         initial_termination_state = new_termination_state(
             initial_state, max_num_expansions
         )
-        initial_energy = _compute_energy(initial_state)  # H0 of the HMC step
+        initial_energy = energy_fn(initial_state)  # H0 of the HMC step
         initial_proposal = proposal.Proposal(
             initial_state, initial_energy, 0.0, -np.inf
         )
         initial_trajectory = trajectory.Trajectory(
             initial_state,
             initial_state,
+            initial_state.momentum,
             initial_state.velocity,
             0,
         )

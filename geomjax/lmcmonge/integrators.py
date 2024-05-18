@@ -32,6 +32,7 @@ class RiemannianIntegratorState(NamedTuple):
 
     alpha2: float
     position: ArrayTree
+    momentum: ArrayTree
     velocity: ArrayTree
     logdensity: float
     logdensity_grad_norm: ArrayTree
@@ -52,6 +53,7 @@ def lan_integrator(
     logdensity_fn: Callable,
     set_weighted_gradient: Callable,
     normalizing_constant: Callable,
+    metric_vector_product: Callable,
 ) -> RiemannianIntegrator:
     """Lans integrator ."""
 
@@ -66,6 +68,7 @@ def lan_integrator(
         (
             alpha2,
             position,
+            momentum,
             velocity,
             logdensity,
             logdensity_grad_norm,
@@ -129,10 +132,15 @@ def lan_integrator(
         logdensity_hvp_velocity_norm = (
             hvp_fn(position, velocity) / sqrt_determinant_metric
         )
+        # Compute momentum for U-turns
+        momentum = metric_vector_product(
+            velocity, alpha2, logdensity_grad, determinant_metric
+        )
 
         return RiemannianIntegratorState(
             alpha2,
             position,
+            momentum,
             velocity,
             logdensity,
             logdensity_grad_norm,

@@ -22,7 +22,7 @@ import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 import geomjax.lmcmonge.integrators as integrators
 import geomjax.lmcmonge.metrics as metrics
-from geomjax.lmcmonge.trajectory import lmc_energy
+from geomjax.lmcmonge.metrics import lmcmonge_energy
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import hvp
 
@@ -170,10 +170,11 @@ def build_kernel(
 
         (
             velocity_generator,
-            kinetic_energy_fn,
+            kinetic_energy,
             set_weighted_gradient,
             normalizing_constant,
             _,
+            metric_vector_product,
         ) = metrics.gaussian_riemannian(alpha2, inverse_mass_matrix)
         determinant_metric = normalizing_constant(alpha2, logdensity_grad)
         sqrt_determinant_metric = jnp.sqrt(determinant_metric)
@@ -181,11 +182,14 @@ def build_kernel(
         logdensity_grad_norm = logdensity_grad / sqrt_determinant_metric
 
         symplectic_integrator = integrator(
-            logdensity_fn, set_weighted_gradient, normalizing_constant
+            logdensity_fn,
+            set_weighted_gradient,
+            normalizing_constant,
+            metric_vector_product,
         )
         proposal_generator = lmc_proposal(
             symplectic_integrator,
-            kinetic_energy_fn,
+            kinetic_energy,
             step_size,
             num_integration_steps,
             divergence_threshold,
@@ -197,6 +201,9 @@ def build_kernel(
         Hdl_ig = hvp(logdensity_fn, position, dl_ig) / sqrt_determinant_metric
         ig_Hdl_ig = set_weighted_gradient(Hdl_ig)
         velocity = velocity_generator(key_velocity, position, alpha2, dl_ig)
+        momentum = metric_vector_product(
+            velocity, alpha2, logdensity_grad, determinant_metric
+        )
         # Compute normalized Hvp velocity
         logdensity_hvp_velocity_norm = (
             hvp(logdensity_fn, position, velocity) / sqrt_determinant_metric
@@ -205,6 +212,7 @@ def build_kernel(
         integrator_state = integrators.RiemannianIntegratorState(
             alpha2,
             position,
+            momentum,
             velocity,
             logdensity,
             logdensity_grad_norm,
@@ -500,7 +508,7 @@ def lmc_proposal(
     """
     build_trajectory = trajectory.static_integration(integrator)
     init_proposal, generate_proposal = proposal.proposal_generator(
-        lmc_energy(kinetic_energy)
+        lmcmonge_energy(kinetic_energy)
     )
 
     def generate(
@@ -541,10 +549,12 @@ def flip_velocity(
     should indeed retrieve the initial state (with flipped velocity).
 
     """
+    flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
     flipped_velocity = jax.tree_util.tree_map(lambda m: -1.0 * m, state.velocity)
     return integrators.RiemannianIntegratorState(
         state.alpha2,
         state.position,
+        flipped_momentum,
         flipped_velocity,
         state.logdensity,
         state.logdensity_grad_norm,
