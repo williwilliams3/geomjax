@@ -37,8 +37,8 @@ venv_geom/
 .vscode
 
 # Repository specific
-tests/
 data/
 plot/
 figs/
 temp/
+plot/
