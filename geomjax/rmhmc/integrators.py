@@ -18,7 +18,6 @@ import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 from geomjax.types import ArrayTree, ArrayLikeTree
-import geomjax.rmhmc.metrics as metrics
 
 __all__ = ["implicit_midpoint"]
 
@@ -96,6 +95,7 @@ def implicit_midpoint(
     inverse_metric_vector_product: Callable,
     *,
     solver: FixedPointSolver = solve_fixed_point_iteration,
+    return_info=False,
     **solver_kwargs: any,
 ) -> Callable[[IntegratorState, float], IntegratorState]:
     """The implicit midpoint integrator with support for non-stationary kinetic energy
@@ -142,14 +142,15 @@ def implicit_midpoint(
             return _update(q, p, dLdq), dLdq
 
         (q, p), dLdq, info = solver(_step, (position, momentum), **solver_kwargs)
-        del info  # TODO: Track the returned info
 
         # Take an explicit update as recommended by Brofos & Lederman
         _, dLdq = logdensity_and_grad_fn(q)
         q, p = _update(q, p, dLdq, initial=(q, p))
 
         v = inverse_metric_vector_product(q, p)
-
+        if return_info:
+            return IntegratorState(q, p, v, *logdensity_and_grad_fn(q)), info
+        del info  # TODO: Track the returned info
         return IntegratorState(q, p, v, *logdensity_and_grad_fn(q))
 
     return one_step

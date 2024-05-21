@@ -193,7 +193,7 @@ def step_size_adaptation(
         step_size = adapt_final(last_warmup_state)
         parameters = {
             "step_size": jnp.maximum(step_size, lower_bound),
-            # **extra_parameters,
+            **extra_parameters,
         }
 
         return (
