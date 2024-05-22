@@ -22,7 +22,7 @@ import geomjax.rmhmc.metrics as metrics
 import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.mcmc.metrics import hmc_energy
-from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
+from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey, Array
 
 __all__ = ["init", "build_kernel", "rmhmc"]
 
@@ -39,6 +39,20 @@ class RMHMCState(NamedTuple):
     position: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
+
+
+class DynamicRMHMCState(NamedTuple):
+    """State of the dynamic RMHMC algorithm.
+
+    Adds a utility array for generating a pseudo or quasi-random sequence of
+    number of integration steps.
+
+    """
+
+    position: ArrayTree
+    logdensity: float
+    logdensity_grad: ArrayTree
+    random_generator_arg: Array
 
 
 class RMHMCInfo(NamedTuple):
@@ -82,6 +96,15 @@ class RMHMCInfo(NamedTuple):
 def init(position: ArrayLikeTree, logdensity_fn: Callable):
     logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
     return RMHMCState(position, logdensity, logdensity_grad)
+
+
+def init_dynamic(
+    position: ArrayLikeTree, logdensity_fn: Callable, random_generator_arg: Array
+):
+    logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
+    return DynamicRMHMCState(
+        position, logdensity, logdensity_grad, random_generator_arg
+    )
 
 
 def build_kernel(
@@ -153,6 +176,74 @@ def build_kernel(
     return kernel
 
 
+def build_dynamic_kernel(
+    integrator: Callable = integrators.implicit_midpoint,
+    divergence_threshold: float = 1000,
+    next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
+    integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+):
+    """Build a Dynamic RMHMC kernel where the number of integration steps is chosen randomly.
+
+    Parameters
+    ----------
+    integrator
+        The symplectic integrator to use to integrate the Hamiltonian dynamics.
+    divergence_threshold
+        Value of the difference in energy above which we consider that the transition is divergent.
+    next_random_arg_fn
+        Function that generates the next `random_generator_arg` from its previous value.
+    integration_steps_fn
+        Function that generates the next pseudo or quasi-random number of integration steps in the
+        sequence, given the current `random_generator_arg`. Needs to return an `int`.
+
+    Returns
+    -------
+    A kernel that takes a rng_key and a Pytree that contains the current state
+    of the chain and that returns a new state of the chain along with
+    information about the transition.
+
+    """
+    lmc_base = build_kernel(integrator, divergence_threshold)
+
+    def kernel(
+        rng_key: PRNGKey,
+        state: DynamicRMHMCState,
+        logdensity_fn: Callable,
+        step_size: float,
+        metric_fn: Array,
+        **integration_steps_kwargs,
+    ) -> tuple[DynamicRMHMCState, RMHMCInfo]:
+        """Generate a new sample with the LMC kernel."""
+        num_integration_steps = integration_steps_fn(
+            state.random_generator_arg, **integration_steps_kwargs
+        )
+        lmc_state = RMHMCState(
+            state.position,
+            state.logdensity,
+            state.logdensity_grad,
+        )
+        lmc_proposal, info = lmc_base(
+            rng_key,
+            lmc_state,
+            logdensity_fn,
+            step_size,
+            metric_fn,
+            num_integration_steps,
+        )
+        next_random_arg = next_random_arg_fn(state.random_generator_arg)
+        return (
+            DynamicRMHMCState(
+                lmc_proposal.position,
+                lmc_proposal.logdensity,
+                lmc_proposal.logdensity_grad,
+                next_random_arg,
+            ),
+            info,
+        )
+
+    return kernel
+
+
 class rmhmc:
     """A Riemannian Manifold Hamiltonian Monte Carlo kernel
 
@@ -218,6 +309,68 @@ class rmhmc:
             )
 
         return SamplingAlgorithm(init_fn, step_fn)
+
+
+class dynamic_rmhmc:
+    """Implements the (basic) user interface for the dynamic RMHMC kernel.
+
+    Parameters
+    ----------
+    logdensity_fn
+        The log-density function we wish to draw samples from.
+    step_size
+        The value to use for the step size in the symplectic integrator.
+    metric_fn
+        The metric function.
+    divergence_threshold
+        The absolute value of the difference in energy between two states above
+        which we say that the transition is divergent. The default value is
+        commonly found in other libraries, and yet is arbitrary.
+    integrator
+        (algorithm parameter) The symplectic integrator to use to integrate the trajectory.
+    next_random_arg_fn
+        Function that generates the next `random_generator_arg` from its previous value.
+    integration_steps_fn
+        Function that generates the next pseudo or quasi-random number of integration steps in the
+        sequence, given the current `random_generator_arg`.
+
+
+    Returns
+    -------
+    A ``SamplingAlgorithm``.
+    """
+
+    init = staticmethod(init_dynamic)
+    build_kernel = staticmethod(build_dynamic_kernel)
+
+    def __new__(  # type: ignore[misc]
+        cls,
+        logdensity_fn: Callable,
+        step_size: float,
+        metric_fn: Callable,
+        *,
+        divergence_threshold: int = 1000,
+        integrator: Callable = integrators.implicit_midpoint,
+        next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
+        integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+    ) -> SamplingAlgorithm:
+        kernel = cls.build_kernel(
+            integrator, divergence_threshold, next_random_arg_fn, integration_steps_fn
+        )
+
+        def init_fn(position: ArrayLikeTree, random_generator_arg: Array):
+            return cls.init(position, logdensity_fn, random_generator_arg)
+
+        def step_fn(rng_key: PRNGKey, state):
+            return kernel(
+                rng_key,
+                state,
+                logdensity_fn,
+                step_size,
+                metric_fn,
+            )
+
+        return SamplingAlgorithm(init_fn, step_fn)  # type: ignore[arg-type]
 
 
 def rmhmc_proposal(

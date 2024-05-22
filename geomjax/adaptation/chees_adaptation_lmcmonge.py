@@ -61,6 +61,7 @@ def base(
     optim: optax.GradientTransformation,
     target_acceptance_rate: float,
     decay_rate: float,
+    update_alpha: bool = False,
 ) -> Tuple[Callable, Callable]:
     """Maximizing the Change in the Estimator of the Expected Square criterion
     (trajectory length) and dual averaging procedure (step size) for the jittered
@@ -109,6 +110,7 @@ def base(
         acceptance_probabilities: Array,
         is_divergent: Array,
         initial_adaptation_state: ChEESAdaptationState,
+        update_alpha: bool = False,
     ) -> ChEESAdaptationState:
         """Compute values for the parameters based on statistics collected from
         multiple chains.
@@ -217,39 +219,42 @@ def base(
         new_trajectory_length = jnp.exp(new_log_trajectory_length_ma)
 
         # Adaptation of warp parameter
-
-        alpha2_gradients = (
-            jitter_generator(random_generator_arg)
-            * trajectory_length
-            * (
-                jax.vmap(lambda p: jnp.dot(p, p))(proposals_matrix)
-                - jax.vmap(lambda p: jnp.dot(p, p))(initials_matrix)
+        if update_alpha:
+            alpha2_gradients = (
+                jitter_generator(random_generator_arg)
+                * trajectory_length
+                * (
+                    jax.vmap(lambda p: jnp.dot(p, p))(proposals_matrix)
+                    - jax.vmap(lambda p: jnp.dot(p, p))(initials_matrix)
+                )
+                * jax.vmap(lambda p, dalpha2: jnp.dot(p, dalpha2))(
+                    proposals_matrix, derivatives_alpha2_matrix
+                )
             )
-            * jax.vmap(lambda p, dalpha2: jnp.dot(p, dalpha2))(
-                proposals_matrix, derivatives_alpha2_matrix
+            alpha2_gradient = jnp.sum(
+                acceptance_probabilities * alpha2_gradients, where=~is_divergent
+            ) / jnp.sum(acceptance_probabilities, where=~is_divergent)
+
+            log_alpha2 = jnp.log(alpha2)
+
+            updates, optim_state_alpha2_ = optim.update(
+                alpha2_gradient, optim_state_alpha2, log_alpha2
             )
-        )
-        alpha2_gradient = jnp.sum(
-            acceptance_probabilities * alpha2_gradients, where=~is_divergent
-        ) / jnp.sum(acceptance_probabilities, where=~is_divergent)
-
-        log_alpha2 = jnp.log(alpha2)
-
-        updates, optim_state_alpha2_ = optim.update(
-            alpha2_gradient, optim_state_alpha2, log_alpha2
-        )
-        log_alpha2_ = optax.apply_updates(log_alpha2, updates)
-        new_log_alpha2, new_optim_state_alpha2 = jax.lax.cond(
-            jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
-            lambda _: (log_alpha2_, optim_state_alpha2_),
-            lambda _: (log_alpha2, optim_state_alpha2),
-            None,
-        )
-        new_log_alpha2_ma = (
-            1.0 - update_weight
-        ) * log_alpha2_ma + update_weight * new_log_alpha2
-        new_alpha2 = jnp.exp(new_log_alpha2_ma)
-
+            log_alpha2_ = optax.apply_updates(log_alpha2, updates)
+            new_log_alpha2, new_optim_state_alpha2 = jax.lax.cond(
+                jnp.isfinite(jax.flatten_util.ravel_pytree(log_alpha2_)[0]).all(),
+                lambda _: (log_alpha2_, optim_state_alpha2_),
+                lambda _: (log_alpha2, optim_state_alpha2),
+                None,
+            )
+            new_log_alpha2_ma = (
+                1.0 - update_weight
+            ) * log_alpha2_ma + update_weight * new_log_alpha2
+            new_alpha2 = jnp.exp(new_log_alpha2_ma)
+        else:
+            new_alpha2 = alpha2
+            new_log_alpha2_ma = log_alpha2_ma
+            new_optim_state_alpha2 = optim_state_alpha2
         return ChEESAdaptationState(
             new_step_size,
             new_log_step_size_ma,
@@ -317,6 +322,7 @@ def base(
             acceptance_probabilities,
             is_divergent,
             adaptation_state,
+            update_alpha=update_alpha,
         )
 
         return new_state
@@ -333,6 +339,8 @@ def chees_adaptation(
     jitter_amount: float = 1.0,
     target_acceptance_rate: float = OPTIMAL_TARGET_ACCEPTANCE_RATE,
     decay_rate: float = 0.5,
+    update_alpha: bool = False,
+    alpha2: float = 0.001,
 ) -> AdaptationAlgorithm:
     """Adapt the step size and trajectory length (number of integration steps / step size)
     parameters of the jittered HMC algorthm.
@@ -407,7 +415,6 @@ def chees_adaptation(
         optim: optax.GradientTransformation,
         num_steps: int = 1000,
         *,
-        alpha2: float = 0.001,
         max_sampling_steps: int = 1000,
     ):
         assert all(
@@ -443,7 +450,12 @@ def chees_adaptation(
         )
 
         init, update = base(
-            jitter_gn, next_random_arg_fn, optim, target_acceptance_rate, decay_rate
+            jitter_gn,
+            next_random_arg_fn,
+            optim,
+            target_acceptance_rate,
+            decay_rate,
+            update_alpha=update_alpha,
         )
 
         @jax.jit

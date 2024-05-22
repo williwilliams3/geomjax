@@ -28,6 +28,7 @@ import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import hvp
+from functools import partial
 
 __all__ = ["NUTSInfo", "init", "build_kernel", "nutslmc"]
 
@@ -123,6 +124,7 @@ def build_kernel(
         logdensity_fn: Callable,
         step_size: float,
         inverse_mass_matrix: Array,
+        stopping_criterion: str = "euc",
     ) -> tuple[lmc.LMCState, NUTSInfo]:
         """Generate a new sample with the NUTS-LMC kernel."""
 
@@ -142,6 +144,7 @@ def build_kernel(
             uturn_check_fn,
             metric_vector_product,
         ) = metrics.gaussian_riemannian(alpha2, inverse_mass_matrix)
+        uturn_check_fn = partial(uturn_check_fn, criterion=stopping_criterion)
         determinant_metric = normalizing_constant(alpha2, logdensity_grad)
         sqrt_determinant_metric = jnp.sqrt(determinant_metric)
         # normalized quantities
@@ -274,6 +277,7 @@ class nutslmc:
         max_num_doublings: int = 10,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.lan_integrator,
+        stopping_criterion: str = "euc",
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(integrator, divergence_threshold, max_num_doublings)
 
@@ -287,6 +291,7 @@ class nutslmc:
                 logdensity_fn,
                 step_size,
                 inverse_mass_matrix,
+                stopping_criterion=stopping_criterion,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)

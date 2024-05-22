@@ -9,6 +9,7 @@ import numpy as np
 import optax
 
 import geomjax.lmcmc.lmc as lmc
+import geomjax.rmhmc.rmhmc as rmhmc
 import geomjax.optimizers.dual_averaging as dual_averaging
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 from geomjax.base import AdaptationAlgorithm
@@ -281,6 +282,7 @@ def chees_adaptation(
     jitter_amount: float = 1.0,
     target_acceptance_rate: float = OPTIMAL_TARGET_ACCEPTANCE_RATE,
     decay_rate: float = 0.5,
+    dynamics: float = "lmc",
 ) -> AdaptationAlgorithm:
     """Adapt the step size and trajectory length (number of integration steps / step size)
     parameters of the jittered HMC algorthm.
@@ -385,10 +387,16 @@ def chees_adaptation(
                 dtype=int,
             )
 
-        step_fn = lmc.build_dynamic_kernel(
-            next_random_arg_fn=next_random_arg_fn,
-            integration_steps_fn=integration_steps_fn,
-        )
+        if dynamics == "lmc":
+            step_fn = lmc.build_dynamic_kernel(
+                next_random_arg_fn=next_random_arg_fn,
+                integration_steps_fn=integration_steps_fn,
+            )
+        elif dynamics == "rmhmc":
+            step_fn = rmhmc.build_dynamic_kernel(
+                next_random_arg_fn=next_random_arg_fn,
+                integration_steps_fn=integration_steps_fn,
+            )
 
         init, update = base(
             jitter_gn, next_random_arg_fn, optim, target_acceptance_rate, decay_rate
@@ -422,9 +430,15 @@ def chees_adaptation(
                 new_adaptation_state,
             )
 
-        batch_init = jax.vmap(
-            lambda p: lmc.init_dynamic(p, logprob_fn, init_random_arg)
-        )
+        if dynamics == "lmc":
+
+            batch_init = jax.vmap(
+                lambda p: lmc.init_dynamic(p, logprob_fn, init_random_arg)
+            )
+        elif dynamics == "rmhmc":
+            batch_init = jax.vmap(
+                lambda p: rmhmc.init_dynamic(p, logprob_fn, init_random_arg)
+            )
         init_states = batch_init(positions)
         init_adaptation_state = init(init_random_arg, step_size)
 

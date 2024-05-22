@@ -30,11 +30,9 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import jax.scipy as jscipy
-import jax.scipy.stats as jss
 from jax.flatten_util import ravel_pytree
 from geomjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 from geomjax.util import generate_gaussian_noise
-from typing import Optional
 
 __all__ = ["riemannian_euclidean"]
 

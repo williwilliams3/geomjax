@@ -26,6 +26,7 @@ from geomjax.mcmc.metrics import hmc_energy
 import geomjax.mcmc.trajectory as trajectory
 from geomjax.base import SamplingAlgorithm
 from geomjax.types import ArrayLikeTree, ArrayTree, PRNGKey
+from functools import partial
 
 __all__ = ["NUTSInfo", "init", "build_kernel", "nuts"]
 
@@ -117,6 +118,7 @@ def build_kernel(
         step_size: float,
         metric_fn: Callable,
         max_num_doublings: int = 10,
+        stopping_criterion: str = "euc",
     ) -> tuple[rmhmc.RMHMCState, NUTSInfo]:
         """Generate a new sample with the NUTS kernel."""
 
@@ -126,6 +128,7 @@ def build_kernel(
             uturn_check_fn,
             inverse_metric_vector_product,
         ) = metrics.gaussian_riemannian(metric_fn)
+        uturn_check_fn = partial(uturn_check_fn, criterion=stopping_criterion)
         symplectic_integrator = integrator(
             logdensity_fn, kinetic_energy_fn, inverse_metric_vector_product
         )
@@ -226,6 +229,7 @@ class nuts:
         max_num_doublings: int = 10,
         divergence_threshold: int = 1000,
         integrator: Callable = integrators.implicit_midpoint,
+        stopping_criterion: str = "euc",
     ) -> SamplingAlgorithm:
         kernel = cls.build_kernel(integrator, divergence_threshold)
 
@@ -240,6 +244,7 @@ class nuts:
                 step_size,
                 metric_fn,
                 max_num_doublings,
+                stopping_criterion=stopping_criterion,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)

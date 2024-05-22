@@ -1,5 +1,7 @@
 from .adaptation.chees_adaptation import chees_adaptation
-from .adaptation.chees_adaptation_lmc import chees_adaptation as chees_adaptation_lmc
+from .adaptation.chees_adaptation_riemanian import (
+    chees_adaptation as chees_adaptation_riemanian,
+)
 from .adaptation.chees_adaptation_lmcmonge import (
     chees_adaptation as chees_adaptation_lmcmonge,
 )
@@ -14,7 +16,7 @@ from .mcmc.hmc import dynamic_hmc, hmc
 from .mcmc.nuts import nuts
 from .lmcmc.lmc import dynamic_lmc, lmc, LMCState
 from .lmcmc.mmala import mmala
-from .rmhmc.rmhmc import rmhmc
+from .rmhmc.rmhmc import rmhmc, dynamic_rmhmc
 
 from .lmcmc.glmc import glmc
 from .lmcmc.nuts import nuts as nutslmc
@@ -38,6 +40,7 @@ __all__ = [
     "dynamic_lmc",
     "nutsrmhmc",
     "rmhmc",
+    "dynamic_rmhmc",
     "nutslmc",
     "lmcmonge",
     "dynamic_lmcmonge",
@@ -47,7 +50,7 @@ __all__ = [
     "step_size_adaptation",
     "meads_adaptation",
     "chees_adaptation",
-    "chees_adaptation_lmc",
+    "chees_adaptation_riemanian",
     "chees_adaptation_lmcmonge",
     "ess",  # diagnostics
     "rhat",
