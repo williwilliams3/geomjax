@@ -18,7 +18,6 @@ import jax
 import jax.numpy as jnp
 
 import geomjax.lmcmc as lmcmc
-import geomjax.lmcmonge as lmcmonge
 from geomjax.adaptation.base import AdaptationInfo, AdaptationResults
 
 from geomjax.adaptation.step_size import (
@@ -27,7 +26,7 @@ from geomjax.adaptation.step_size import (
 )
 from geomjax.base import AdaptationAlgorithm
 from geomjax.progress_bar import progress_bar_scan
-from geomjax.types import Array, ArrayLikeTree, PRNGKey
+from geomjax.types import ArrayLikeTree, PRNGKey
 
 __all__ = ["WindowAdaptationState", "base", "build_schedule", "window_adaptation"]
 
@@ -105,7 +104,6 @@ def step_size_adaptation(
     target_acceptance_rate: float = 0.80,
     progress_bar: bool = False,
     lower_bound: float = 1e-3,
-    alpha2: float = 1.0,
     **extra_parameters,
 ) -> AdaptationAlgorithm:
     """Adapt the value of the step size parameters of
@@ -150,7 +148,7 @@ def step_size_adaptation(
             rng_key,
             state,
             logdensity_fn,
-            adaptation_state.step_size,
+            step_size=adaptation_state.step_size,
             **extra_parameters,
         )
         new_adaptation_state = adapt_step(
@@ -169,8 +167,6 @@ def step_size_adaptation(
             init_state = algorithm.init(
                 position, logdensity_fn, extra_parameters["metric_fn"]
             )
-        elif algorithm == lmcmonge.lmc.lmc or algorithm == lmcmonge.nuts.nutslmc:
-            init_state = algorithm.init(position, logdensity_fn, alpha2)
         else:
             init_state = algorithm.init(position, logdensity_fn)
         init_adaptation_state = adapt_init(position, initial_step_size)

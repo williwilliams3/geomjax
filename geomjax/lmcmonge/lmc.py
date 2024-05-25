@@ -38,7 +38,6 @@ class LMCState(NamedTuple):
 
     """
 
-    alpha2: float
     position: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
@@ -99,11 +98,10 @@ class LMCInfo(NamedTuple):
     num_integration_steps: int
 
 
-def init(position: ArrayLikeTree, logdensity_fn: Callable, alpha2: float):
+def init(position: ArrayLikeTree, logdensity_fn: Callable):
     logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
     volume_adjustment = 0.0
     return LMCState(
-        alpha2,
         position,
         logdensity,
         logdensity_grad,
@@ -157,11 +155,11 @@ def build_kernel(
         step_size: float,
         inverse_mass_matrix: Array,
         num_integration_steps: int,
+        alpha2: float,
     ) -> tuple[LMCState, LMCInfo]:
         """Generate a new sample with the LMC kernel."""
 
         (
-            alpha2,
             position,
             logdensity,
             logdensity_grad,
@@ -228,7 +226,6 @@ def build_kernel(
         determinant_metric = proposal.determinant_metric
         sqrt_determinant_metric = jnp.sqrt(proposal.determinant_metric)
         proposal = LMCState(
-            proposal.alpha2,
             proposal.position,
             proposal.logdensity,
             proposal.logdensity_grad_norm * sqrt_determinant_metric,
@@ -392,7 +389,7 @@ class lmc:
         kernel = cls.build_kernel(integrator, divergence_threshold)
 
         def init_fn(position: ArrayLikeTree):
-            return cls.init(position, logdensity_fn, alpha2)
+            return cls.init(position, logdensity_fn)
 
         def step_fn(rng_key: PRNGKey, state):
             return kernel(
@@ -402,6 +399,7 @@ class lmc:
                 step_size,
                 inverse_mass_matrix,
                 num_integration_steps,
+                alpha2,
             )
 
         return SamplingAlgorithm(init_fn, step_fn)

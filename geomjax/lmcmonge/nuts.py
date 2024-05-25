@@ -124,12 +124,12 @@ def build_kernel(
         logdensity_fn: Callable,
         step_size: float,
         inverse_mass_matrix: Array,
+        alpha2: float,
         stopping_criterion: str = "euc",
     ) -> tuple[lmc.LMCState, NUTSInfo]:
         """Generate a new sample with the NUTS-LMC kernel."""
 
         (
-            alpha2,
             position,
             logdensity,
             logdensity_grad,
@@ -197,7 +197,6 @@ def build_kernel(
         determinant_metric = proposal.determinant_metric
         sqrt_determinant_metric = jnp.sqrt(proposal.determinant_metric)
         proposal = lmc.LMCState(
-            proposal.alpha2,
             proposal.position,
             proposal.logdensity,
             proposal.logdensity_grad_norm * sqrt_determinant_metric,
@@ -282,7 +281,7 @@ class nutslmc:
         kernel = cls.build_kernel(integrator, divergence_threshold, max_num_doublings)
 
         def init_fn(position: ArrayLikeTree):
-            return cls.init(position, logdensity_fn, alpha2)
+            return cls.init(position, logdensity_fn)
 
         def step_fn(rng_key: PRNGKey, state):
             return kernel(
@@ -291,6 +290,7 @@ class nutslmc:
                 logdensity_fn,
                 step_size,
                 inverse_mass_matrix,
+                alpha2=alpha2,
                 stopping_criterion=stopping_criterion,
             )
 
